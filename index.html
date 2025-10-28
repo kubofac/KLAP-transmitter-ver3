@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>K-LAP transmitter (BLE Write)</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        #log { margin-top: 20px; border: 1px solid #ccc; padding: 10px; max-height: 200px; overflow-y: scroll; }
+        .success { color: green; }
+        .error { color: red; }
+        #statusMessage { font-weight: bold; }
+        #connectButton { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>K-LAP Transmitter 🚀</h1>
+    <p>「接続」ボタンをクリックし、**ESP32_Sender_A_Status** デバイスを選択してください。</p>
+    
+    <button id="connectButton">🔌 BLEデバイスに接続</button>
+    <p id="statusMessage" class="error">未接続</p>
+    
+    <hr>
+    
+    <h2>メッセージ送信 (BLE Write)</h2>
+    <input type="text" id="messageInput" placeholder="25文字以内のメッセージを入力..." style="width: 80%; padding: 8px;">
+    <button id="sendButton" disabled>🚀 送信</button>
+    
+    <hr>
+    
+    <h2>ログ</h2>
+    <div id="log"></div>
+    
+    <script>
+    'use strict';
+
+    // ------------------------------------------------------------------
+    // 1. 定数とDOM要素
+    // ------------------------------------------------------------------
+
+    // ESP32送信機 (ESP32_Sender_A_Status) のUUIDを使用
+    const SERVICE_UUID = '5fafc201-1fb5-459e-8fcc-c5c9c331914b';
+    // 書き込み用 Characteristic のUUID
+    const WRITE_CHARACTERISTIC_UUID = 'fbb5483e-36e1-45f1-b40b-361734a96b3a'; 
+    const DEVICE_NAME = 'ESP32_Sender_A_Status';
+
+    let bleWriteCharacteristic = null;
+    const connectButton = document.getElementById('connectButton');
+    const sendButton = document.getElementById('sendButton');
+    const messageInput = document.getElementById('messageInput');
+    const statusMessage = document.getElementById('statusMessage');
+    const logDiv = document.getElementById('log');
+
+    // ------------------------------------------------------------------
+    // 2. ヘルパー関数
+    // ------------------------------------------------------------------
+
+    function log(message, className = '') {
+        const p = document.createElement('p');
+        p.className = className;
+        p.textContent = message;
+        // 最新のログを上に追加
+        logDiv.prepend(p); 
+    }
+
+    function updateStatus(message, isConnected) {
+        statusMessage.textContent = message;
+        statusMessage.className = isConnected ? 'success' : 'error';
+        sendButton.disabled = !isConnected;
+        connectButton.disabled = false;
+        connectButton.textContent = isConnected ? '✅ 接続済み' : '🔌 BLEデバイスに接続';
+    }
+
+    // ------------------------------------------------------------------
+    // 3. 接続処理
+    // ------------------------------------------------------------------
+
+    connectButton.addEventListener('click', async () => {
+        updateStatus('接続中...', false);
+        log('デバイスの検索を開始...');
+        
+        try {
+            // ユーザーにデバイスを選択させる（名前でフィルタリング）
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [{ name: DEVICE_NAME }], 
+                optionalServices: [SERVICE_UUID] 
+            });
+
+            log(`デバイスに接続中: ${device.name}`);
+            const server = await device.gatt.connect();
+            
+            // 切断イベントのリスナー
+            device.addEventListener('gattserverdisconnected', () => {
+                log('デバイスが切断されました。', 'error');
+                bleWriteCharacteristic = null;
+                updateStatus('未接続', false);
+            });
+
+            const service = await server.getPrimaryService(SERVICE_UUID);
+            // 書き込み用の特性を取得
+            bleWriteCharacteristic = await service.getCharacteristic(WRITE_CHARACTERISTIC_UUID);
+
+            updateStatus('接続完了', true);
+            log('接続完了。メッセージを送信できます。', 'success');
+
+        } catch (error) {
+            log(`接続エラー: ${error.message}`, 'error');
+            updateStatus('未接続', false);
+        }
+    });
+
+    // ------------------------------------------------------------------
+    // 4. 送信処理 (書き込み)
+    // ------------------------------------------------------------------
+
+    sendButton.addEventListener('click', async () => {
+        if (!bleWriteCharacteristic) {
+            log('エラー: 接続されていません。', 'error');
+            return;
+        }
+        
+        const message = messageInput.value;
+        if (!message) {
+            log('メッセージを入力してください。', 'error');
+            return;
+        }
+        
+        // ESP-NOWのペイロード制限（32バイト）に合わせ、25文字を推奨
+        if (message.length > 25) { 
+            log('メッセージが長すぎます（25文字以下推奨）。', 'error');
+            return;
+        }
+
+        try {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(message);
+
+            // BLEキャラクタリスティックへ書き込み
+            await bleWriteCharacteristic.writeValue(data);
+            
+            // 書き込み成功はESP-NOWの送信リクエスト成功を意味します。
+            // 実際のESP-NOWの送信結果は、受信側のアプリで通知を受信してください。
+            log(`送信リクエスト完了: "${message}"`);
+            messageInput.value = '';
+
+        } catch (error) {
+            log(`送信エラー: ${error.message}`, 'error');
+        }
+    });
+    </script>
+</body>
+</html>
