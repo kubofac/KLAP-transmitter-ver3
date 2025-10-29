@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <style>
+        /* スタイルシート省略 */
         body { font-family: Arial, sans-serif; padding: 20px; }
         #log { margin-top: 20px; border: 1px solid #ccc; padding: 10px; max-height: 200px; overflow-y: scroll; }
         .success { color: green; }
@@ -54,7 +55,7 @@
     const logDiv = document.getElementById('log');
 
     // ------------------------------------------------------------------
-    // 2. ヘルパー関数 (省略 - 変更なし)
+    // 2. ヘルパー関数 (変更なし)
     // ------------------------------------------------------------------
 
     function log(message, className = '') {
@@ -81,9 +82,12 @@
         log('デバイスの検索を開始...');
         
         try {
-            // 🚨 修正: サービスUUIDのみでフィルタリング
+            // 🚨 修正: サービスUUIDとデバイス名の両方でフィルタリングを試みる
             const device = await navigator.bluetooth.requestDevice({
-                 filters: [{ services: [SERVICE_UUID] }], 
+                 filters: [
+                    { name: DEVICE_NAME },
+                    { services: [SERVICE_UUID] }
+                 ], 
                  optionalServices: [SERVICE_UUID] 
             });
 
@@ -111,7 +115,7 @@
     });
 
     // ------------------------------------------------------------------
-    // 4. 送信処理 (書き込み) (省略 - 変更なし)
+    // 4. 送信処理 (書き込み) (変更なし)
     // ------------------------------------------------------------------
 
     sendButton.addEventListener('click', async () => {
