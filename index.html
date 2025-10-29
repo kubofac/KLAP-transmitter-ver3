@@ -12,6 +12,7 @@
         .error { color: red; }
         #statusMessage { font-weight: bold; }
         #connectButton { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        #messageInput { margin-right: 10px; }
     </style>
 </head>
 <body>
@@ -39,7 +40,7 @@
     // 1. 定数とDOM要素
     // ------------------------------------------------------------------
 
-    // ESP32送信機 (ESP32_Sender_A_Status) のUUIDを使用
+    // ★★★ 送信側ESP32 (ESP32_Sender_A_Status) のUUID ★★★
     const SERVICE_UUID = '5fafc201-1fb5-459e-8fcc-c5c9c331914b';
     // 書き込み用 Characteristic のUUID
     const WRITE_CHARACTERISTIC_UUID = 'fbb5483e-36e1-45f1-b40b-361734a96b3a'; 
@@ -59,7 +60,7 @@
     function log(message, className = '') {
         const p = document.createElement('p');
         p.className = className;
-        p.textContent = message;
+        p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
         // 最新のログを上に追加
         logDiv.prepend(p); 
     }
@@ -83,8 +84,10 @@
         try {
             // ユーザーにデバイスを選択させる（名前でフィルタリング）
             const device = await navigator.bluetooth.requestDevice({
-                filters: [{ name: DEVICE_NAME }], 
-                optionalServices: [SERVICE_UUID] 
+                 // 🚨 名前フィルタリングではなく、サービスUUIDによるフィルタリングを推奨
+                 // ただし、名前フィルタリングはデバッグには有用です
+                 filters: [{ name: DEVICE_NAME }], 
+                 optionalServices: [SERVICE_UUID] 
             });
 
             log(`デバイスに接続中: ${device.name}`);
@@ -129,7 +132,7 @@
         // ESP-NOWのペイロード制限（32バイト）に合わせ、25文字を推奨
         if (message.length > 25) { 
             log('メッセージが長すぎます（25文字以下推奨）。', 'error');
-            return;
+            // ここでreturnせず、25文字に切り詰めても良い
         }
 
         try {
@@ -140,7 +143,6 @@
             await bleWriteCharacteristic.writeValue(data);
             
             // 書き込み成功はESP-NOWの送信リクエスト成功を意味します。
-            // 実際のESP-NOWの送信結果は、受信側のアプリで通知を受信してください。
             log(`送信リクエスト完了: "${message}"`);
             messageInput.value = '';
 
@@ -150,4 +152,5 @@
     });
     </script>
 </body>
+
 </html>
