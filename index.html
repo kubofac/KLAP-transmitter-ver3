@@ -54,14 +54,13 @@
     const logDiv = document.getElementById('log');
 
     // ------------------------------------------------------------------
-    // 2. ヘルパー関数
+    // 2. ヘルパー関数 (省略 - 変更なし)
     // ------------------------------------------------------------------
 
     function log(message, className = '') {
         const p = document.createElement('p');
         p.className = className;
         p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-        // 最新のログを上に追加
         logDiv.prepend(p); 
     }
 
@@ -82,11 +81,9 @@
         log('デバイスの検索を開始...');
         
         try {
-            // ユーザーにデバイスを選択させる（名前でフィルタリング）
+            // 🚨 修正: サービスUUIDのみでフィルタリング
             const device = await navigator.bluetooth.requestDevice({
-                 // 🚨 名前フィルタリングではなく、サービスUUIDによるフィルタリングを推奨
-                 // ただし、名前フィルタリングはデバッグには有用です
-                 filters: [{ name: DEVICE_NAME }], 
+                 filters: [{ services: [SERVICE_UUID] }], 
                  optionalServices: [SERVICE_UUID] 
             });
 
@@ -114,7 +111,7 @@
     });
 
     // ------------------------------------------------------------------
-    // 4. 送信処理 (書き込み)
+    // 4. 送信処理 (書き込み) (省略 - 変更なし)
     // ------------------------------------------------------------------
 
     sendButton.addEventListener('click', async () => {
@@ -132,7 +129,6 @@
         // ESP-NOWのペイロード制限（32バイト）に合わせ、25文字を推奨
         if (message.length > 25) { 
             log('メッセージが長すぎます（25文字以下推奨）。', 'error');
-            // ここでreturnせず、25文字に切り詰めても良い
         }
 
         try {
@@ -142,7 +138,6 @@
             // BLEキャラクタリスティックへ書き込み
             await bleWriteCharacteristic.writeValue(data);
             
-            // 書き込み成功はESP-NOWの送信リクエスト成功を意味します。
             log(`送信リクエスト完了: "${message}"`);
             messageInput.value = '';
 
