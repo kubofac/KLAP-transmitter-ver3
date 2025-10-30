@@ -6,122 +6,155 @@
     <title>KLAP Messenger 送信機</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Interフォントを適用 */
+        /* Interフォントと基本的なスタイル */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
         body {
             font-family: 'Inter', sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f7f7f7; /* 明るい背景 */
-            height: 100vh;
+            background-color: #f7f7f7;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding-top: 20px;
         }
+        /* メインコンテナ */
         .container {
-            width: 90%;
-            max-width: 500px;
-            padding: 30px;
+            max-width: 400px;
+            width: 95%;
             background-color: white;
+            padding: 24px;
             border-radius: 12px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 0.5s ease-out;
         }
-        .btn-base {
-            padding: 0.75rem 1.5rem;
-            font-size: 1rem;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* ボタンの共通スタイル */
+        .btn {
+            padding: 10px 15px;
             font-weight: bold;
-            border: none;
-            border-radius: 0.5rem;
+            border-radius: 8px;
+            transition: background-color 0.3s, transform 0.1s;
             cursor: pointer;
-            transition: background-color 0.3s ease, transform 0.1s ease;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            width: 100%; /* 幅を親要素に合わせる */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
-        .btn-connect {
+        .btn:active {
+            transform: translateY(1px);
+        }
+        .btn-primary {
             background-color: #4f46e5; /* Indigo */
             color: white;
         }
-        .btn-connect:hover {
+        .btn-primary:hover:not(:disabled) {
             background-color: #4338ca;
         }
-        .btn-connect:disabled {
+        .btn-primary:disabled {
             background-color: #a5b4fc;
             cursor: not-allowed;
+            opacity: 0.7;
+            box-shadow: none;
         }
-        .btn-send {
-            background-color: #10b981; /* Emerald */
-            color: white;
+        /* メッセージエリア */
+        #status-display {
+            min-height: 40px;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 12px;
+            font-weight: 500;
+            text-align: center;
         }
-        .btn-send:hover {
-            background-color: #059669;
+        .status-default {
+            background-color: #e5e7eb; /* Gray-200 */
+            color: #4b5563; /* Gray-600 */
         }
-        .btn-send:disabled {
-            background-color: #6ee7b7;
-            cursor: not-allowed;
+        .status-success {
+            background-color: #d1fae5; /* Green-100 */
+            color: #065f46; /* Green-700 */
         }
-        textarea {
-            resize: none;
-            height: 120px;
+        .status-error {
+            background-color: #fee2e2; /* Red-100 */
+            color: #991b1b; /* Red-700 */
+        }
+        .status-sending {
+            background-color: #fef3c7; /* Yellow-100 */
+            color: #b45309; /* Amber-700 */
         }
     </style>
 </head>
 <body>
-
     <div class="container">
-        <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">✉️ KLAP 送信機</h2>
+        <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center">KLAP Messenger 送信</h1>
         
-        <div id="status-display" class="mb-4 text-center p-3 rounded-lg bg-indigo-100 text-indigo-700 font-medium">
-            未接続
-        </div>
-
-        <button id="connect-button" class="btn-base btn-connect mb-6">
+        <!-- 接続ボタン -->
+        <button id="connect-button" class="btn btn-primary w-full mb-4">
             BLE接続
         </button>
 
-        <div id="send-controls" class="space-y-4">
-            <textarea id="message-input" class="w-full border-2 border-gray-300 p-3 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="送信するメッセージを入力してください (最大250バイト)" maxlength="250" disabled></textarea>
+        <!-- メッセージ入力フォーム -->
+        <div class="space-y-4">
+            <input type="text" id="message-input" placeholder="送信するメッセージ (最大29文字)" maxlength="29"
+                   class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                   disabled>
             
-            <button id="send-button" class="btn-base btn-send" disabled>
+            <button id="send-button" class="btn btn-primary w-full" disabled>
                 メッセージを送信
             </button>
+        </div>
+
+        <!-- ステータス表示エリア -->
+        <div id="status-display" class="status-default">
+            未接続
         </div>
     </div>
 
     <script>
         // BLE 定数
-        // 受信機コードとUUIDを共通化するために、ここでは相手のデバイス名を使用する
-        const RECEIVER_DEVICE_NAME = 'ESP32_Receiver_A_Data'; // Webアプリは送信機ESP32に接続するが、フィルタリングの柔軟性のためにサービスUUIDベースで接続する
-        const SENDER_DEVICE_NAME = 'ESP32_Sender_A'; // Webアプリが実際に接続するデバイス名
-        const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-        const DATA_CHAR_UUID = 'beb5483e-36e1-45f1-b40b-361734a96b3a';
-        
+        const SENDER_DEVICE_NAME = 'ESP32_Sender_B_Status';
+        // [修正済み] サービスUUIDをC++コードと統一
+        const SERVICE_UUID = '5fafc201-1fb5-459e-8fcc-c5c9c331914b';
+        // Webアプリ(Write) -> ESP32(Read)
+        const CONTROL_CHAR_UUID = 'aeb5483e-36e1-45f1-b40b-361734a96b3a';
+        // ESP32(Notify) -> Webアプリ(Read)
+        const STATUS_CHAR_UUID = 'cfb5483e-36e1-45f1-b40b-361734a96b3a';
+
         // UI 要素
         const connectButton = document.getElementById('connect-button');
-        const sendButton = document.getElementById('send-button');
         const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
         const statusDisplay = document.getElementById('status-display');
 
         let bleDevice;
-        let dataCharacteristic;
+        let controlCharacteristic; // Write
+        let statusCharacteristic;  // Notify
 
         // ----------------------------------------------------
-        // UI 状態の更新
+        // UI ステータス更新ヘルパー
         // ----------------------------------------------------
 
-        function updateStatus(message, isConnected = false) {
+        function updateStatus(message, type = 'default') {
             statusDisplay.textContent = message;
-            if (isConnected) {
-                statusDisplay.className = 'mb-4 text-center p-3 rounded-lg bg-green-100 text-green-700 font-medium';
-                messageInput.disabled = false;
-                sendButton.disabled = false;
-                connectButton.textContent = '接続済み';
-                connectButton.disabled = true;
+            statusDisplay.className = 'status-default'; // 一旦リセット
+            if (type === 'success') {
+                statusDisplay.classList.add('status-success');
+            } else if (type === 'error') {
+                statusDisplay.classList.add('status-error');
+            } else if (type === 'sending') {
+                statusDisplay.classList.add('status-sending');
             } else {
-                statusDisplay.className = 'mb-4 text-center p-3 rounded-lg bg-indigo-100 text-indigo-700 font-medium';
-                messageInput.disabled = true;
-                sendButton.disabled = true;
-                connectButton.textContent = 'BLE接続';
-                connectButton.disabled = false;
+                statusDisplay.classList.add('status-default');
+            }
+        }
+
+        function setControls(connected) {
+            messageInput.disabled = !connected;
+            sendButton.disabled = !connected;
+            connectButton.textContent = connected ? 'BLE切断' : 'BLE接続';
+            if (connected) {
+                updateStatus('接続済み。メッセージを入力してください。', 'success');
+            } else {
+                updateStatus('未接続', 'default');
             }
         }
 
@@ -130,13 +163,19 @@
         // ----------------------------------------------------
 
         async function connectBLE() {
+            if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) {
+                // 既に接続済みの場合、切断処理を実行
+                bleDevice.gatt.disconnect();
+                return;
+            }
+
             try {
-                updateStatus('接続中...');
+                updateStatus('スキャン中...');
                 connectButton.disabled = true;
 
-                // フィルタリング設定: サービスUUIDを主とし、デバイス名をオプションとする（互換性向上）
+                // 1. デバイススキャン
                 const options = {
-                    filters: [{ services: [SERVICE_UUID] }], // サービスUUIDをフィルタの主軸にする
+                    filters: [{ name: SENDER_DEVICE_NAME }],
                     optionalServices: [SERVICE_UUID]
                 };
                 
@@ -145,63 +184,88 @@
 
                 // 2. GATT サーバー接続
                 const server = await bleDevice.gatt.connect();
-                updateStatus('サービス検索中...');
+                updateStatus('接続確立。サービス検索中...');
 
                 // 3. サービス取得
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 updateStatus('特性取得中...');
 
-                // 4. 特性取得 (Write 特性)
-                dataCharacteristic = await service.getCharacteristic(DATA_CHAR_UUID);
+                // 4. 特性取得
+                controlCharacteristic = await service.getCharacteristic(CONTROL_CHAR_UUID);
+                statusCharacteristic = await service.getCharacteristic(STATUS_CHAR_UUID);
                 
-                updateStatus('接続成功。メッセージを送信できます。', true);
+                // 5. Notifyの開始 (ステータス受信のため)
+                await statusCharacteristic.startNotifications();
+                statusCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
+                
+                setControls(true); // 接続成功
+                connectButton.disabled = false;
 
             } catch (error) {
                 console.error('BLE接続エラー:', error);
-                // エラーメッセージをより詳細に表示
-                let errorMessage = '接続失敗。ブラウザのBluetooth設定を確認してください。';
-                if (error.name === 'NotFoundError') {
-                    errorMessage = 'デバイスが見つかりませんでした。ESP32が動作しているか、または「' + SENDER_DEVICE_NAME + '」が表示されたか確認してください。';
-                }
-                updateStatus(errorMessage);
+                let errorMessage = '接続失敗: ' + (error.name === 'NotFoundError' ? 'デバイスが見つかりません。' : error.message);
+                updateStatus(errorMessage, 'error');
                 connectButton.disabled = false;
+                setControls(false); 
+                bleDevice = null;
             }
         }
 
         // ----------------------------------------------------
-        // データ送信処理 (BLE Write)
+        // メッセージ送信処理
         // ----------------------------------------------------
 
         async function sendMessage() {
-            if (!dataCharacteristic) {
-                updateStatus('エラー: BLE特性が設定されていません。再接続してください。');
-                return;
-            }
-
             const message = messageInput.value.trim();
-            if (message.length === 0) {
-                updateStatus('メッセージを入力してください。');
+            if (!message || !controlCharacteristic) {
+                updateStatus('メッセージを入力するか、先にBLE接続してください。', 'error');
                 return;
             }
-
-            // UTF-8 エンコード
-            const encoder = new TextEncoder('utf-8');
-            const data = encoder.encode(message);
+            if (message.length > 29) {
+                updateStatus('メッセージは29文字以内にしてください。', 'error');
+                return;
+            }
 
             try {
-                sendButton.disabled = true;
-                updateStatus(`「${message}」を送信中...`);
-                
-                // BLE Write 実行
-                await dataCharacteristic.writeValue(data);
-                
-                updateStatus('送信完了！受信機の画面を確認してください。', true);
-                messageInput.value = ''; // 送信後に入力欄をクリア
+                // UTF-8形式のバイト配列に変換
+                const data = new TextEncoder().encode(message);
+
+                // Write 実行
+                await controlCharacteristic.writeValue(data);
+
+                // 送信後のUI更新
+                updateStatus('メッセージ送信中... ESP-NOWのACKを待機しています。', 'sending');
+                sendButton.disabled = true; 
 
             } catch (error) {
-                console.error('送信エラー:', error);
-                updateStatus(`送信エラーが発生しました: ${error.message}`);
+                console.error('Writeエラー:', error);
+                updateStatus('メッセージ送信エラー: ' + error.message, 'error');
                 sendButton.disabled = false;
+            }
+        }
+
+        // ----------------------------------------------------
+        // Notify 通知ハンドラ (ESP-NOWステータス)
+        // ----------------------------------------------------
+
+        function handleNotifications(event) {
+            const value = event.target.value;
+            const receivedText = new TextDecoder('utf-8').decode(value);
+            
+            console.log('Status Received:', receivedText);
+
+            sendButton.disabled = false; // 送信ボタンを解放
+
+            if (receivedText === 'SENDING') {
+                updateStatus('メッセージ送信中... ESP-NOWのACKを待機しています。', 'sending');
+                sendButton.disabled = true; 
+            } else if (receivedText === 'SEND_OK') {
+                updateStatus('✔ メッセージ配信成功 (ACK受信)', 'success');
+                messageInput.value = ''; // 成功したら入力欄をクリア
+            } else if (receivedText === 'ACK_TIMEOUT') {
+                updateStatus('⚠️ 配信失敗: 受信機からのACK応答タイムアウト', 'error');
+            } else if (receivedText === 'ESP-NOW_FAIL') {
+                updateStatus('❌ 配信失敗: ESP-NOWの初期送信エラー', 'error');
             }
         }
 
@@ -213,10 +277,11 @@
             const device = event.target;
             console.log('Device disconnected:', device.name);
             
-            updateStatus('切断されました。再接続してください。');
-            connectButton.textContent = '再接続';
-            
-            dataCharacteristic = null;
+            updateStatus('切断されました。再接続してください。', 'error');
+            setControls(false); 
+
+            controlCharacteristic = null;
+            statusCharacteristic = null;
             bleDevice = null;
         }
 
@@ -226,8 +291,18 @@
 
         connectButton.addEventListener('click', connectBLE);
         sendButton.addEventListener('click', sendMessage);
+        
+        // Enterキーで送信できるようにする
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !sendButton.disabled) {
+                sendMessage();
+            }
+        });
+
+        window.onload = () => {
+            console.log("Sender App Ready.");
+        };
 
     </script>
 </body>
 </html>
-```eof
