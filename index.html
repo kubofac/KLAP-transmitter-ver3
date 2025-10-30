@@ -1,155 +1,233 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-    <title>K-LAP transmitter (BLE Write)</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+    <title>KLAP Messenger 送信機</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* スタイルシート省略 */
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        #log { margin-top: 20px; border: 1px solid #ccc; padding: 10px; max-height: 200px; overflow-y: scroll; }
-        .success { color: green; }
-        .error { color: red; }
-        #statusMessage { font-weight: bold; }
-        #connectButton { padding: 10px 20px; font-size: 16px; cursor: pointer; }
-        #messageInput { margin-right: 10px; }
+        /* Interフォントを適用 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7; /* 明るい背景 */
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            width: 90%;
+            max-width: 500px;
+            padding: 30px;
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        .btn-base {
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            width: 100%; /* 幅を親要素に合わせる */
+        }
+        .btn-connect {
+            background-color: #4f46e5; /* Indigo */
+            color: white;
+        }
+        .btn-connect:hover {
+            background-color: #4338ca;
+        }
+        .btn-connect:disabled {
+            background-color: #a5b4fc;
+            cursor: not-allowed;
+        }
+        .btn-send {
+            background-color: #10b981; /* Emerald */
+            color: white;
+        }
+        .btn-send:hover {
+            background-color: #059669;
+        }
+        .btn-send:disabled {
+            background-color: #6ee7b7;
+            cursor: not-allowed;
+        }
+        textarea {
+            resize: none;
+            height: 120px;
+        }
     </style>
 </head>
 <body>
-    <h1>K-LAP Transmitter 🚀</h1>
-    <p>「接続」ボタンをクリックし、**ESP32_Sender_A_Status** デバイスを選択してください。</p>
-    
-    <button id="connectButton">🔌 BLEデバイスに接続</button>
-    <p id="statusMessage" class="error">未接続</p>
-    
-    <hr>
-    
-    <h2>メッセージ送信 (BLE Write)</h2>
-    <input type="text" id="messageInput" placeholder="25文字以内のメッセージを入力..." style="width: 80%; padding: 8px;">
-    <button id="sendButton" disabled>🚀 送信</button>
-    
-    <hr>
-    
-    <h2>ログ</h2>
-    <div id="log"></div>
-    
-    <script>
-    'use strict';
 
-    // ------------------------------------------------------------------
-    // 1. 定数とDOM要素
-    // ------------------------------------------------------------------
-
-    // ★★★ 送信側ESP32 (ESP32_Sender_A_Status) のUUID ★★★
-    const SERVICE_UUID = '5fafc201-1fb5-459e-8fcc-c5c9c331914b';
-    // 書き込み用 Characteristic のUUID
-    const WRITE_CHARACTERISTIC_UUID = 'fbb5483e-36e1-45f1-b40b-361734a96b3a'; 
-    const DEVICE_NAME = 'ESP32_Sender_A_Status';
-
-    let bleWriteCharacteristic = null;
-    const connectButton = document.getElementById('connectButton');
-    const sendButton = document.getElementById('sendButton');
-    const messageInput = document.getElementById('messageInput');
-    const statusMessage = document.getElementById('statusMessage');
-    const logDiv = document.getElementById('log');
-
-    // ------------------------------------------------------------------
-    // 2. ヘルパー関数 (変更なし)
-    // ------------------------------------------------------------------
-
-    function log(message, className = '') {
-        const p = document.createElement('p');
-        p.className = className;
-        p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-        logDiv.prepend(p); 
-    }
-
-    function updateStatus(message, isConnected) {
-        statusMessage.textContent = message;
-        statusMessage.className = isConnected ? 'success' : 'error';
-        sendButton.disabled = !isConnected;
-        connectButton.disabled = false;
-        connectButton.textContent = isConnected ? '✅ 接続済み' : '🔌 BLEデバイスに接続';
-    }
-
-    // ------------------------------------------------------------------
-    // 3. 接続処理
-    // ------------------------------------------------------------------
-
-    connectButton.addEventListener('click', async () => {
-        updateStatus('接続中...', false);
-        log('デバイスの検索を開始...');
+    <div class="container">
+        <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">✉️ KLAP 送信機</h2>
         
-        try {
-            // 🚨 修正: サービスUUIDとデバイス名の両方でフィルタリングを試みる
-            const device = await navigator.bluetooth.requestDevice({
-                 filters: [
-                    { name: DEVICE_NAME },
-                    { services: [SERVICE_UUID] }
-                 ], 
-                 optionalServices: [SERVICE_UUID] 
-            });
+        <div id="status-display" class="mb-4 text-center p-3 rounded-lg bg-indigo-100 text-indigo-700 font-medium">
+            未接続
+        </div>
 
-            log(`デバイスに接続中: ${device.name}`);
-            const server = await device.gatt.connect();
+        <button id="connect-button" class="btn-base btn-connect mb-6">
+            BLE接続
+        </button>
+
+        <div id="send-controls" class="space-y-4">
+            <textarea id="message-input" class="w-full border-2 border-gray-300 p-3 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="送信するメッセージを入力してください (最大250バイト)" maxlength="250" disabled></textarea>
             
-            // 切断イベントのリスナー
-            device.addEventListener('gattserverdisconnected', () => {
-                log('デバイスが切断されました。', 'error');
-                bleWriteCharacteristic = null;
-                updateStatus('未接続', false);
-            });
+            <button id="send-button" class="btn-base btn-send" disabled>
+                メッセージを送信
+            </button>
+        </div>
+    </div>
 
-            const service = await server.getPrimaryService(SERVICE_UUID);
-            // 書き込み用の特性を取得
-            bleWriteCharacteristic = await service.getCharacteristic(WRITE_CHARACTERISTIC_UUID);
-
-            updateStatus('接続完了', true);
-            log('接続完了。メッセージを送信できます。', 'success');
-
-        } catch (error) {
-            log(`接続エラー: ${error.message}`, 'error');
-            updateStatus('未接続', false);
-        }
-    });
-
-    // ------------------------------------------------------------------
-    // 4. 送信処理 (書き込み) (変更なし)
-    // ------------------------------------------------------------------
-
-    sendButton.addEventListener('click', async () => {
-        if (!bleWriteCharacteristic) {
-            log('エラー: 接続されていません。', 'error');
-            return;
-        }
+    <script>
+        // BLE 定数
+        // 受信機コードとUUIDを共通化するために、ここでは相手のデバイス名を使用する
+        const RECEIVER_DEVICE_NAME = 'ESP32_Receiver_A_Data'; // Webアプリは送信機ESP32に接続するが、フィルタリングの柔軟性のためにサービスUUIDベースで接続する
+        const SENDER_DEVICE_NAME = 'ESP32_Sender_A'; // Webアプリが実際に接続するデバイス名
+        const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+        const DATA_CHAR_UUID = 'beb5483e-36e1-45f1-b40b-361734a96b3a';
         
-        const message = messageInput.value;
-        if (!message) {
-            log('メッセージを入力してください。', 'error');
-            return;
-        }
-        
-        // ESP-NOWのペイロード制限（32バイト）に合わせ、25文字を推奨
-        if (message.length > 25) { 
-            log('メッセージが長すぎます（25文字以下推奨）。', 'error');
+        // UI 要素
+        const connectButton = document.getElementById('connect-button');
+        const sendButton = document.getElementById('send-button');
+        const messageInput = document.getElementById('message-input');
+        const statusDisplay = document.getElementById('status-display');
+
+        let bleDevice;
+        let dataCharacteristic;
+
+        // ----------------------------------------------------
+        // UI 状態の更新
+        // ----------------------------------------------------
+
+        function updateStatus(message, isConnected = false) {
+            statusDisplay.textContent = message;
+            if (isConnected) {
+                statusDisplay.className = 'mb-4 text-center p-3 rounded-lg bg-green-100 text-green-700 font-medium';
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                connectButton.textContent = '接続済み';
+                connectButton.disabled = true;
+            } else {
+                statusDisplay.className = 'mb-4 text-center p-3 rounded-lg bg-indigo-100 text-indigo-700 font-medium';
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                connectButton.textContent = 'BLE接続';
+                connectButton.disabled = false;
+            }
         }
 
-        try {
-            const encoder = new TextEncoder();
+        // ----------------------------------------------------
+        // BLE 接続処理
+        // ----------------------------------------------------
+
+        async function connectBLE() {
+            try {
+                updateStatus('接続中...');
+                connectButton.disabled = true;
+
+                // フィルタリング設定: サービスUUIDを主とし、デバイス名をオプションとする（互換性向上）
+                const options = {
+                    filters: [{ services: [SERVICE_UUID] }], // サービスUUIDをフィルタの主軸にする
+                    optionalServices: [SERVICE_UUID]
+                };
+                
+                bleDevice = await navigator.bluetooth.requestDevice(options);
+                bleDevice.addEventListener('gattserverdisconnected', onDeviceDisconnected);
+
+                // 2. GATT サーバー接続
+                const server = await bleDevice.gatt.connect();
+                updateStatus('サービス検索中...');
+
+                // 3. サービス取得
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                updateStatus('特性取得中...');
+
+                // 4. 特性取得 (Write 特性)
+                dataCharacteristic = await service.getCharacteristic(DATA_CHAR_UUID);
+                
+                updateStatus('接続成功。メッセージを送信できます。', true);
+
+            } catch (error) {
+                console.error('BLE接続エラー:', error);
+                // エラーメッセージをより詳細に表示
+                let errorMessage = '接続失敗。ブラウザのBluetooth設定を確認してください。';
+                if (error.name === 'NotFoundError') {
+                    errorMessage = 'デバイスが見つかりませんでした。ESP32が動作しているか、または「' + SENDER_DEVICE_NAME + '」が表示されたか確認してください。';
+                }
+                updateStatus(errorMessage);
+                connectButton.disabled = false;
+            }
+        }
+
+        // ----------------------------------------------------
+        // データ送信処理 (BLE Write)
+        // ----------------------------------------------------
+
+        async function sendMessage() {
+            if (!dataCharacteristic) {
+                updateStatus('エラー: BLE特性が設定されていません。再接続してください。');
+                return;
+            }
+
+            const message = messageInput.value.trim();
+            if (message.length === 0) {
+                updateStatus('メッセージを入力してください。');
+                return;
+            }
+
+            // UTF-8 エンコード
+            const encoder = new TextEncoder('utf-8');
             const data = encoder.encode(message);
 
-            // BLEキャラクタリスティックへ書き込み
-            await bleWriteCharacteristic.writeValue(data);
-            
-            log(`送信リクエスト完了: "${message}"`);
-            messageInput.value = '';
+            try {
+                sendButton.disabled = true;
+                updateStatus(`「${message}」を送信中...`);
+                
+                // BLE Write 実行
+                await dataCharacteristic.writeValue(data);
+                
+                updateStatus('送信完了！受信機の画面を確認してください。', true);
+                messageInput.value = ''; // 送信後に入力欄をクリア
 
-        } catch (error) {
-            log(`送信エラー: ${error.message}`, 'error');
+            } catch (error) {
+                console.error('送信エラー:', error);
+                updateStatus(`送信エラーが発生しました: ${error.message}`);
+                sendButton.disabled = false;
+            }
         }
-    });
+
+        // ----------------------------------------------------
+        // 切断ハンドラ
+        // ----------------------------------------------------
+
+        function onDeviceDisconnected(event) {
+            const device = event.target;
+            console.log('Device disconnected:', device.name);
+            
+            updateStatus('切断されました。再接続してください。');
+            connectButton.textContent = '再接続';
+            
+            dataCharacteristic = null;
+            bleDevice = null;
+        }
+
+        // ----------------------------------------------------
+        // イベントリスナー
+        // ----------------------------------------------------
+
+        connectButton.addEventListener('click', connectBLE);
+        sendButton.addEventListener('click', sendMessage);
+
     </script>
 </body>
-
 </html>
+```eof
