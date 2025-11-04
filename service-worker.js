@@ -1,4 +1,4 @@
-const CACHE_NAME = 'KLAP_transmitter_ver2';
+const CACHE_NAME = 'KLAP_transmitter_ver3';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -49,4 +49,5 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
+
 });
