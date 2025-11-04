@@ -3,279 +3,193 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KLAP Messenger - 送信側</title>
-    <!-- Tailwind CSS CDNをロード -->
+    <link rel="manifest" href="manifest_sender.json"> <!-- 送信機専用のマニフェストを参照 -->
+    <title>KLAP_transmitter_ver3</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f7f7f9;
+            background-color: #f7f7f7;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
         }
-        .message-history::-webkit-scrollbar {
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        textarea {
+            resize: none;
+            transition: all 0.3s ease;
+        }
+        .status-message {
+            padding: 10px;
+            margin-top: 15px;
+            border-radius: 8px;
+            font-weight: bold;
             display: none;
+            word-break: break-word; /* メッセージが長すぎる場合の対策 */
         }
-        .message-history {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
+        .success {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        .error {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+        .info {
+            background-color: #dbeafe;
+            color: #1e40af;
+        }
+        /* PWAがstandaloneモードで起動したときにのみ適用されるスタイル */
+        @media all and (display-mode: standalone) {
+            body {
+                padding-top: max(1rem, env(safe-area-inset-top));
+            }
         }
     </style>
 </head>
-<body class="p-4 md:p-8 min-h-screen flex items-center justify-center">
+<body>
 
-    <div id="app" class="w-full max-w-lg bg-white shadow-xl rounded-2xl p-6 md:p-8">
-        <h1 class="text-3xl font-bold text-gray-800 mb-2 flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-7 h-7 text-blue-500 mr-2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.874L5.999 12zm0 0h7.5" />
-            </svg>
-            KLAP 送信機
-        </h1>
-        <p class="text-sm text-gray-500 mb-6">メッセージを入力し、$\text{ESP}-\text{NOW}$ 経由で受信機へ転送します。</p>
+<div class="container">
+    <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">ESP-NOW メッセージ送信機</h1>
+    <p class="text-sm text-gray-500 mb-6 text-center">ノードB（サインボード）へメッセージを送信します。</p>
+    
+    <div id="status-display" class="status-message info">接続情報: ロード中...</div>
 
-        <!-- 接続ステータス -->
-        <div id="status-display" class="mb-6 p-3 rounded-lg text-sm font-medium transition-all duration-300 bg-indigo-100 text-indigo-800">
-            ステータス: 未接続
+    <form id="send-form" class="space-y-4">
+        <div>
+            <label for="message-input" class="block text-sm font-medium text-gray-700 mb-1">送信メッセージ (最大 249文字)</label>
+            <textarea id="message-input" rows="5" maxlength="249"
+                      class="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm p-3 focus:ring-indigo-500 focus:border-indigo-500 text-lg"></textarea>
+            <div class="text-right text-sm text-gray-500 mt-1">
+                <span id="char-count">0</span> / 249
+            </div>
         </div>
-
-        <!-- 接続ボタン -->
-        <button id="connect-button" class="w-full py-3 px-4 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150 shadow-md shadow-indigo-300 disabled:opacity-50" onclick="handleConnect()">
-            <span id="button-text">ESP32 送信機に接続</span>
+        
+        <button type="submit" id="send-button" 
+                class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+            送信
         </button>
+    </form>
+    
+    <p class="text-xs text-gray-400 mt-6 text-center">ノードAのWeb API IP: <span id="ip-address" class="font-mono text-indigo-500">192.168.4.1</span></p>
 
-        <!-- メッセージ入力と送信 -->
-        <div id="message-area" class="mt-8 pt-6 border-t border-gray-200 hidden">
-            <h2 class="text-xl font-semibold text-gray-700 mb-4">メッセージ送信</h2>
-            <textarea id="message-input" rows="3" maxlength="29" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 resize-none" placeholder="送信するメッセージ (最大29文字)" oninput="updateCharCount()"></textarea>
-            <div class="flex justify-between items-center mt-2">
-                <span id="char-count" class="text-sm text-gray-500">0/29 文字</span>
-                <button id="send-button" class="py-2 px-4 rounded-xl font-semibold text-white bg-blue-600 hover:bg-blue-700 transition duration-150 shadow-md shadow-blue-300 disabled:opacity-50" onclick="sendMessage()" disabled>
-                    メッセージを送信
-                </button>
-            </div>
-        </div>
+</div>
+
+<script>
+    // ⭐ 【修正済み】ノードAがSoftAPとして起動するため、IPアドレスを192.168.4.1に固定します ⭐
+    const NODE_A_IP = "192.168.4.1"; 
+    const API_URL = `http://${NODE_A_IP}/send`; 
+    // ------------------------------------------------------------------
+
+    const form = document.getElementById('send-form');
+    const input = document.getElementById('message-input');
+    const button = document.getElementById('send-button');
+    const statusDisplay = document.getElementById('status-display');
+    const charCount = document.getElementById('char-count');
+    const ipDisplay = document.getElementById('ip-address');
+
+    ipDisplay.textContent = NODE_A_IP;
+
+    // メッセージ表示関数
+    function displayStatus(message, type) {
+        statusDisplay.textContent = message;
+        statusDisplay.className = `status-message ${type}`;
+        statusDisplay.style.display = 'block';
         
-        <!-- 送信履歴とACKステータス -->
-        <div class="mt-8">
-            <h2 class="text-xl font-semibold text-gray-700 mb-4">送信履歴 (ACK)</h2>
-            <div class="h-48 overflow-y-auto border border-gray-300 rounded-xl p-4 message-history bg-gray-50 shadow-inner">
-                <p class="text-xs text-gray-500 text-center italic mt-2" id="initial-history">メッセージを送信すると、ここに結果が表示されます。</p>
-                <div id="history-container" class="space-y-3">
-                    <!-- 送信履歴とACK結果がここに追加される -->
-                </div>
-            </div>
-        </div>
+        // 5秒後にメッセージを非表示にする
+        setTimeout(() => {
+            statusDisplay.style.display = 'none';
+        }, 5000);
+    }
 
-    </div>
+    // 文字数カウント
+    input.addEventListener('input', () => {
+        charCount.textContent = input.value.length;
+    });
 
-    <script>
-        // UUIDs (ESP32_Sender_A.ino と一致させること)
-        const SERVICE_UUID = '5fafc201-1fb5-459e-8fcc-c5c9c331914b';
-        const CONTROL_CHAR_UUID = 'aeb5483e-36e1-45f1-b40b-361734a96b3a'; // Write特性 (メッセージ送信)
-        const STATUS_CHAR_UUID = 'cfb5483e-36e1-45f1-b40b-361734a96b3a'; // Notify特性 (ACK受信)
+    // フォーム送信処理
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = input.value;
         
-        // デバイス名 (ESP32_Sender_A.ino のアドバタイズ名と一致させること)
-        const DEVICE_NAME = 'ESP32_Sender_B_Status';
+        if (!message.trim()) {
+            displayStatus('メッセージを入力してください。', 'error');
+            return;
+        }
 
-        let bleDevice = null;
-        let controlCharacteristic = null;
-        let statusCharacteristic = null;
+        button.disabled = true;
+        button.innerHTML = '<svg class="w-5 h-5 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.057 4m2.583 0H4v5m14.59 2a8.001 8.001 0 01-13.391 6.36M18.582 6l-3.5 3.5"></path></svg>送信中...';
+        displayStatus('メッセージを送信しています...', 'info');
 
-        const statusDisplay = document.getElementById('status-display');
-        const connectButton = document.getElementById('connect-button');
-        const buttonText = document.getElementById('button-text');
-        const messageArea = document.getElementById('message-area');
-        const messageInput = document.getElementById('message-input');
-        const sendButton = document.getElementById('send-button');
-        const charCount = document.getElementById('char-count');
-        const historyContainer = document.getElementById('history-container');
-        const initialHistory = document.getElementById('initial-history');
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' }, 
+                body: message
+            });
 
-        // ユーティリティ関数: ステータス表示の更新
-        function updateStatus(message, type = 'info') {
-            statusDisplay.textContent = `ステータス: ${message}`;
-            statusDisplay.className = 'mb-6 p-3 rounded-lg text-sm font-medium transition-all duration-300';
-
-            switch (type) {
-                case 'success':
-                    statusDisplay.classList.add('bg-green-100', 'text-green-800');
-                    break;
-                case 'error':
-                    statusDisplay.classList.add('bg-red-100', 'text-red-800');
-                    break;
-                case 'warning':
-                    statusDisplay.classList.add('bg-yellow-100', 'text-yellow-800');
-                    break;
-                default:
-                    statusDisplay.classList.add('bg-indigo-100', 'text-indigo-800');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ message: '不明なAPIエラー' }));
+                throw new Error(`HTTPエラー ${response.status}: ${errorData.message || 'サーバー応答が不正です。'}`);
             }
-        }
-        
-        // 文字数カウンター
-        function updateCharCount() {
-            const length = messageInput.value.length;
-            charCount.textContent = `${length}/29 文字`;
-            sendButton.disabled = length === 0 || length > 29;
-        }
 
-        // ACK/ステータス通知ハンドラ
-        function handleStatusNotifications(event) {
-            const value = event.target.value;
-            const status = new TextDecoder().decode(value).trim();
-            const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const result = await response.json();
             
-            initialHistory.classList.add('hidden');
+            if (result.status === 'ok') {
+                displayStatus('送信成功！サインボードで確認してください。', 'success');
+                // input.value = ''; // 送信後もメッセージを残す場合はコメントアウト
+                // charCount.textContent = input.value.length;
+            } else {
+                displayStatus(`送信失敗: ${result.message}`, 'error');
+            }
 
-            let messageClass = 'bg-yellow-50 border-yellow-200 text-yellow-700';
-            let statusText = status;
-            
-            switch (status) {
-                case 'SEND_OK':
-                    messageClass = 'bg-green-50 border-green-200 text-green-700';
-                    statusText = '✅ 転送成功: 受信機からのACKを受信しました';
-                    updateStatus('メッセージ転送が完了しました！', 'success');
-                    break;
-                case 'ACK_TIMEOUT':
-                    messageClass = 'bg-red-50 border-red-200 text-red-700';
-                    statusText = '❌ タイムアウト: 受信機からACKが届きませんでした';
-                    updateStatus('ACK応答がありませんでした', 'error');
-                    break;
-                case 'SENDING':
-                    messageClass = 'bg-indigo-50 border-indigo-200 text-indigo-700';
-                    statusText = '🔄 転送中: ESP-NOW送信を開始しました';
-                    updateStatus('ESP-NOW転送中...', 'info');
-                    break;
-                case 'ESP-NOW_FAIL':
-                    messageClass = 'bg-red-100 border-red-300 text-red-800';
-                    statusText = '🚫 即時失敗: ESP-NOW送信がすぐに失敗しました';
-                    updateStatus('ESP-NOWの送信に失敗', 'error');
-                    break;
-                default:
-                    messageClass = 'bg-gray-100 border-gray-300 text-gray-700';
+        } catch (error) {
+            console.error('送信エラー:', error);
+            let userMessage = error.message;
+
+            if (error instanceof TypeError) {
+                 userMessage = `ネットワーク接続エラーです。デバイスがノードAのSoftAP (${ipDisplay.textContent}) に直接接続しているか確認してください。`;
+            } else if (error.message.includes('HTTPエラー')) {
+                userMessage = error.message;
             }
             
-            const div = document.createElement('div');
-            div.className = `p-3 rounded-lg shadow-sm text-sm ${messageClass}`;
-            div.innerHTML = `<p class="font-medium">${statusText}</p><p class="text-xs mt-1 text-right font-mono">${time}</p>`;
-
-            // 最新の履歴を一番上に表示
-            historyContainer.prepend(div);
-            
-            // 転送完了または失敗時にボタンを再有効化
-            if (status !== 'SENDING') {
-                sendButton.disabled = messageInput.value.length === 0;
-            }
+            displayStatus(userMessage, 'error');
+        } finally {
+            button.disabled = false;
+            button.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>送信';
         }
-        
-        // 接続処理
-        async function handleConnect() {
-            if (bleDevice && bleDevice.gatt.connected) {
-                // 既に接続済みの場合、切断
-                bleDevice.gatt.disconnect();
-                return;
-            }
+    });
 
-            try {
-                updateStatus('デバイスをスキャン中...', 'info');
-                connectButton.disabled = true;
-                buttonText.textContent = 'スキャン中...';
+    // PWA: サービスワーカーの登録 (重要)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        // service-worker-sender.js (他のファイルで提供済み) を登録
+        navigator.serviceWorker.register('service-worker-sender.js') 
+          .then(registration => {
+            console.log('Service Worker registered with scope:', registration.scope);
+          })
+          .catch(error => {
+            console.error('Service Worker registration failed:', error);
+          });
+      });
+    }
 
-                // 1. デバイススキャン
-                bleDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: DEVICE_NAME }],
-                    optionalServices: [SERVICE_UUID]
-                });
 
-                updateStatus(`デバイス "${bleDevice.name}" を検出。接続中...`, 'info');
-                
-                // 2. GATTサーバーに接続
-                const server = await bleDevice.gatt.connect();
-                updateStatus('接続成功。サービスを取得中...', 'info');
+    // 起動時の初期メッセージ
+    document.addEventListener('DOMContentLoaded', () => {
+        displayStatus(`ノードAのSoftAP (ESP32_Sender) に接続し、PWAを起動してください。IP: ${NODE_A_IP}`, 'info');
+    });
+</script>
 
-                // 3. サービスを取得
-                const service = await server.getPrimaryService(SERVICE_UUID);
-
-                // 4. 特性を取得: CONTROL (Write) と STATUS (Notify)
-                controlCharacteristic = await service.getCharacteristic(CONTROL_CHAR_UUID);
-                statusCharacteristic = await service.getCharacteristic(STATUS_CHAR_UUID);
-                
-                // 5. STATUS特性の通知を有効化
-                await statusCharacteristic.startNotifications();
-                statusCharacteristic.addEventListener('characteristicvaluechanged', handleStatusNotifications);
-
-                updateStatus('ESP32 送信機に接続完了。メッセージ送信可能です。', 'success');
-                messageArea.classList.remove('hidden');
-                updateCharCount(); // ボタンを有効化/無効化
-                connectButton.classList.add('bg-red-600', 'hover:bg-red-700', 'shadow-red-300');
-                connectButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'shadow-indigo-300');
-                buttonText.textContent = 'ESP32 から切断';
-                
-                // 切断イベントリスナーを追加
-                bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
-                
-            } catch (error) {
-                console.error('BLE接続エラー:', error);
-                updateStatus(`接続失敗: ${error.name || error.message}`, 'error');
-                bleDevice = null;
-                messageArea.classList.add('hidden');
-                connectButton.classList.remove('bg-red-600', 'hover:bg-red-700', 'shadow-red-300');
-                connectButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'shadow-indigo-300');
-                buttonText.textContent = 'ESP32 送信機に接続';
-            } finally {
-                connectButton.disabled = false;
-            }
-        }
-        
-        // メッセージ送信処理
-        async function sendMessage() {
-            if (!controlCharacteristic || sendButton.disabled) return;
-
-            const message = messageInput.value;
-            if (message.length === 0 || message.length > 29) {
-                updateStatus('メッセージは1～29文字で入力してください。', 'warning');
-                return;
-            }
-            
-            sendButton.disabled = true; // 送信中はボタンを無効化
-            updateStatus('メッセージを送信中...', 'info');
-
-            try {
-                const data = new TextEncoder().encode(message);
-                
-                // CONTROL特性に値を書き込む
-                await controlCharacteristic.writeValue(data);
-                
-                // 書き込み成功後、ACKの通知を待つ (STATUS特性のハンドラが後続処理を行う)
-                // 履歴に「送信要求」を記録
-                const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                initialHistory.classList.add('hidden');
-                const div = document.createElement('div');
-                div.className = 'p-3 rounded-lg shadow-sm text-sm bg-blue-50 border-blue-200 text-blue-700';
-                div.innerHTML = `<p class="font-medium">✉️ 送信要求: "${message}"</p><p class="text-xs mt-1 text-right font-mono">${time}</p>`;
-                historyContainer.prepend(div);
-
-                messageInput.value = ''; // 入力欄をクリア
-                updateCharCount(); // 文字数とボタンを更新
-
-            } catch (error) {
-                console.error('メッセージ書き込みエラー:', error);
-                updateStatus(`送信エラー: ${error.message}`, 'error');
-                sendButton.disabled = false;
-            }
-        }
-        
-        // 切断時イベントハンドラ
-        function onDisconnected(event) {
-            updateStatus('切断されました。再接続してください。', 'error');
-            bleDevice = null;
-            messageArea.classList.add('hidden');
-            connectButton.classList.remove('bg-red-600', 'hover:bg-red-700', 'shadow-red-300');
-            connectButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'shadow-indigo-300');
-            buttonText.textContent = 'ESP32 送信機に接続';
-        }
-        
-        // 初期化時の文字数カウント設定
-        window.onload = updateCharCount;
-        
-    </script>
 </body>
 </html>
