@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="manifest" href="manifest.json"> <!-- 送信機専用のマニフェストを参照 -->
-    <title>klap-transmitter-ver3</title>
+    <link rel="manifest" href="manifest_sender.json">
+    <title>ESP-NOW 送信機 PWA</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* (CSS is not changed) */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f7f7f7;
@@ -49,6 +48,21 @@
             background-color: #dbeafe;
             color: #1e40af;
         }
+
+        /* ⭐ 点滅アニメーションの定義 ⭐ */
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .blinking {
+            animation: blink 1s step-start 0s infinite;
+        }
+
+        /* プリセットボタンのスタイル */
+        .preset-btn {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+
         @media all and (display-mode: standalone) {
             body {
                 padding-top: max(1rem, env(safe-area-inset-top));
@@ -62,23 +76,37 @@
     <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">ESP-NOW メッセージ送信機</h1>
     <p class="text-sm text-gray-500 mb-6 text-center">ノードB（サインボード）へメッセージを送信します。</p>
     
+    <!-- ⭐ プリセットボタンエリア - PIT IN と PIT IN & GAS に変更 ⭐ -->
+    <div id="preset-buttons" class="flex flex-wrap gap-3 mb-6">
+        <button type="button" data-message="PIT IN" class="preset-btn flex-1 py-2 px-4 rounded-lg shadow-md text-base font-bold text-white bg-green-600 hover:bg-green-700 transition duration-150 ease-in-out">
+            🚨 PIT IN
+        </button>
+        <!-- ⭐ ここを PIT IN & GAS に変更しました ⭐ -->
+        <button type="button" data-message="PIT IN & GAS" class="preset-btn flex-1 py-2 px-4 rounded-lg shadow-md text-base font-bold text-white bg-blue-600 hover:bg-blue-700 transition duration-150 ease-in-out">
+            ⛽ PIT IN & GAS
+        </button>
+    </div>
+    
     <div id="status-display" class="status-message info">接続情報: ロード中...</div>
 
     <form id="send-form" class="space-y-4">
         <div>
             <label for="message-input" class="block text-sm font-medium text-gray-700 mb-1">送信メッセージ (最大 249文字)</label>
             <textarea id="message-input" rows="5" maxlength="249"
-                      class="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm p-3 focus:ring-indigo-500 focus:border-indigo-500 text-lg"></textarea>
+                      class="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm p-3 focus:ring-indigo-500 focus:border-indigo-500 text-lg">PIT IN</textarea>
             <div class="text-right text-sm text-gray-500 mt-1">
                 <span id="char-count">0</span> / 249
             </div>
         </div>
         
-        <button type="submit" id="send-button" 
-                class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-            送信
-        </button>
+        <!-- 送信/キャンセルボタンのコンテナ -->
+        <div id="button-container">
+            <button type="submit" id="send-button" 
+                    class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                送信
+            </button>
+        </div>
     </form>
     
     <p class="text-xs text-gray-400 mt-6 text-center">ノードAのWeb API IP: <span id="ip-address" class="font-mono text-indigo-500">192.168.4.1</span></p>
@@ -86,34 +114,176 @@
 </div>
 
 <script>
-    // ノードAのSoftAP IPアドレス
     const NODE_A_IP = "192.168.4.1"; 
     const API_URL = `http://${NODE_A_IP}/send`; 
+    const MAX_RETRY_TIME_MS = 30000; // 30秒
+    const RETRY_INTERVAL_MS = 500; // 0.5秒間隔
 
     const form = document.getElementById('send-form');
     const input = document.getElementById('message-input');
-    const button = document.getElementById('send-button');
+    const sendButton = document.getElementById('send-button');
     const statusDisplay = document.getElementById('status-display');
     const charCount = document.getElementById('char-count');
     const ipDisplay = document.getElementById('ip-address');
+    const presetButtonsContainer = document.getElementById('preset-buttons'); // 新しい要素を取得
+
+    let isSending = false;
+    let stopSending = false;
+    let retryTimer = null;
 
     ipDisplay.textContent = NODE_A_IP;
+
+    // UIの点滅処理を制御
+    function startBlinking() {
+        statusDisplay.classList.add('blinking');
+        // 送信中の点滅は送信ボタンまたはキャンセルボタンに適用
+        document.getElementById('send-button') ? sendButton.classList.add('blinking') : document.getElementById('cancel-button').classList.add('blinking');
+    }
+
+    function stopBlinking() {
+        statusDisplay.classList.remove('blinking');
+        // 点滅クラスを解除
+        const currentButton = document.getElementById('send-button') || document.getElementById('cancel-button');
+        if(currentButton) currentButton.classList.remove('blinking');
+    }
+
+    function updateButtonToCancel() {
+        sendButton.id = 'cancel-button';
+        sendButton.type = 'button';
+        sendButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
+        sendButton.classList.add('bg-red-600', 'hover:bg-red-700', 'focus:ring-red-500');
+        sendButton.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>送信キャンセル';
+        sendButton.onclick = handleCancel;
+    }
+
+    function updateButtonToSend() {
+        // ボタンがキャンセル状態の場合、送信状態に戻す
+        const cancelButton = document.getElementById('cancel-button');
+        if (cancelButton) {
+            cancelButton.id = 'send-button';
+            cancelButton.type = 'submit';
+            cancelButton.classList.remove('bg-red-600', 'hover:bg-red-700', 'focus:ring-red-500');
+            cancelButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
+            cancelButton.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>送信';
+            cancelButton.onclick = null; // フォームのsubmitイベントに戻す
+        }
+    }
 
     function displayStatus(message, type) {
         statusDisplay.textContent = message;
         statusDisplay.className = `status-message ${type}`;
         statusDisplay.style.display = 'block';
+    }
+
+    function handleCancel() {
+        if (retryTimer) {
+            clearTimeout(retryTimer);
+        }
+        stopSending = true; // メインループを停止させるフラグ
+        finalizeSending('❌ 送信をキャンセルしました。', 'error', false);
+    }
+
+    function finalizeSending(message, type, resetInput = true) {
+        stopBlinking();
+        updateButtonToSend();
+        isSending = false;
+        stopSending = false;
+        if (retryTimer) clearTimeout(retryTimer);
         
-        // 8 seconds to hide the message
+        displayStatus(message, type);
+        input.disabled = false; // 送信完了またはキャンセル後に入力可能に戻す
+
+        if (resetInput) {
+            // 入力クリアは行わない
+        }
+
+        // 8秒後にメッセージを非表示にする
         setTimeout(() => {
             statusDisplay.style.display = 'none';
         }, 8000);
     }
+    
+    // ⭐ メインの送信リトライロジック ⭐
+    async function attemptSend(message, startTime) {
+        if (stopSending) return; // キャンセルされたら即停止
 
-    input.addEventListener('input', () => {
-        charCount.textContent = input.value.length;
-    });
+        const elapsedTime = millis() - startTime;
+        if (elapsedTime >= MAX_RETRY_TIME_MS) {
+            finalizeSending(`❌ 配信失敗: 30秒以内にノードBから応答がありませんでした。`, 'error', false);
+            return;
+        }
 
+        // UIを更新
+        const timeRemaining = Math.ceil((MAX_RETRY_TIME_MS - elapsedTime) / 1000);
+        displayStatus(`📡 送信中... (残り ${timeRemaining}秒, リトライ中)`, 'info');
+        
+        let success = false;
+        let errorMessage = '不明なエラー';
+
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' }, 
+                body: message
+            });
+
+            if (response.status === 200) {
+                // 成功 (ノードAがESP-NOW配信成功を確認)
+                success = true;
+            } else if (response.status === 503) {
+                // ESP-NOW配信失敗 (リトライ対象)
+                const errorData = await response.json().catch(() => ({ message: 'ノードBがオフラインです。' }));
+                errorMessage = errorData.message || '受信機から応答がありません。';
+            } else {
+                // その他のHTTPエラー (リトライ対象)
+                errorMessage = `HTTPエラー ${response.status}が発生しました。`;
+            }
+
+        } catch (error) {
+            // ネットワークエラー (ノードAへの接続失敗)
+            console.error('ネットワーク接続エラー:', error);
+            errorMessage = `ノードAへの接続エラー。Wi-Fi接続を確認してください。`;
+        }
+
+        if (success) {
+            // 成功した場合、処理を終了
+            finalizeSending('✅ 送信成功！メッセージはノードBに配信されました。', 'success');
+        } else {
+            // 失敗またはタイムアウトの場合、リトライをスケジュール
+            if (!stopSending) {
+                // UIエラーメッセージを一時的に更新 (点滅は継続)
+                statusDisplay.textContent = `📡 送信中... (残り ${timeRemaining}秒, リトライ: ${errorMessage})`;
+
+                // 次の送信をスケジュール
+                retryTimer = setTimeout(() => attemptSend(message, startTime), RETRY_INTERVAL_MS);
+            }
+        }
+    }
+
+    // ⭐ プリセットボタンの送信ハンドラ ⭐
+    function handlePresetSend(message) {
+        if (isSending) return;
+
+        // メッセージ入力欄をプリセットメッセージに設定
+        input.value = message; 
+        charCount.textContent = message.length;
+        
+        // フォームのsubmit処理と同じロジックを開始
+        isSending = true;
+        stopSending = false;
+
+        // UIを「送信中」モードに切り替え
+        input.disabled = true; 
+        updateButtonToCancel();
+        startBlinking();
+
+        // 送信処理開始
+        const startTime = millis();
+        attemptSend(message, startTime);
+    }
+
+
+    // フォーム送信時の初期処理 (手動入力時の送信)
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const message = input.value;
@@ -123,59 +293,30 @@
             return;
         }
 
-        button.disabled = true;
-        button.innerHTML = '<svg class="w-5 h-5 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.057 4m2.583 0H4v5m14.59 2a8.001 8.001 0 01-13.391 6.36M18.582 6l-3.5 3.5"></path></svg>配信結果待機中...';
-        displayStatus('メッセージの配信結果を待機しています...', 'info');
+        if (isSending) return;
+        isSending = true;
+        stopSending = false;
 
-        try {
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain' }, 
-                body: message
-            });
+        // UIを「送信中」モードに切り替え
+        input.disabled = true; // 送信中は入力を無効化
+        updateButtonToCancel();
+        startBlinking();
 
-            // IMPORTANT: Check HTTP status code, especially 503 (Service Unavailable)
-            if (!response.ok || response.status === 503) {
-                const errorData = await response.json().catch(() => ({ message: 'サーバー応答が不正です。' }));
-                
-                // If 503 error, the message failed to deliver via ESP-NOW
-                if (response.status === 503) {
-                     displayStatus(`❌ 配信失敗: ${errorData.message}`, 'error');
-                     return; 
-                }
-                
-                // Other HTTP errors
-                throw new Error(`HTTPエラー ${response.status}: ${errorData.message || 'サーバー応答が不正です。'}`);
-            }
-
-            // 200 OK (Delivery success)
-            const result = await response.json();
-            
-            if (result.status === 'ok') {
-                displayStatus('送信成功！メッセージはノードBに配信されました。', 'success');
-            } else {
-                // In case of 200 OK but status is not 'ok' (unexpected)
-                displayStatus(`配信失敗: ${result.message}`, 'error');
-            }
-
-        } catch (error) {
-            console.error('送信エラー:', error);
-            let userMessage = error.message;
-
-            if (error instanceof TypeError) {
-                 userMessage = `ネットワークエラーです。ノードAのSoftAP (${ipDisplay.textContent}) に接続しているか確認してください。`;
-            } else if (error.message.includes('HTTPエラー')) {
-                userMessage = error.message;
-            }
-            
-            displayStatus(userMessage, 'error');
-        } finally {
-            button.disabled = false;
-            button.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>送信';
-        }
+        // 送信処理開始
+        const startTime = millis();
+        attemptSend(message, startTime);
     });
 
-    // PWA: Service Worker Registration (unchanged)
+    input.addEventListener('input', () => {
+        charCount.textContent = input.value.length;
+    });
+
+    // ユーティリティ関数
+    function millis() {
+        return new Date().getTime();
+    }
+
+    // PWA: サービスワーカーの登録 (変更なし)
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('service-worker-sender.js') 
@@ -190,10 +331,20 @@
 
 
     document.addEventListener('DOMContentLoaded', () => {
+        // ⭐ 初期値の文字数を設定 ⭐
+        charCount.textContent = input.value.length; 
+        
         displayStatus(`デバイスをノードAのSoftAPに接続し、このPWAを起動してください。`, 'info');
+        
+        // ⭐ プリセットボタンのリスナー設定 ⭐
+        presetButtonsContainer.querySelectorAll('.preset-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const message = e.currentTarget.getAttribute('data-message');
+                handlePresetSend(message);
+            });
+        });
     });
 </script>
 
 </body>
 </html>
-
