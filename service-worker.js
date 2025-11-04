@@ -4,8 +4,8 @@ const urlsToCache = [
   '/index.html',
     '/manifest.json',
   '/service-worker.js',
-  '/icon192t.png',
-  '/icon512t.png',
+  '/icon-192t.png',
+  '/icon-512t.png',
   
 ];
 
@@ -51,3 +51,4 @@ self.addEventListener('activate', (event) => {
   );
 
 });
+
