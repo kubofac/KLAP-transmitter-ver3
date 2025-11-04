@@ -4,25 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="manifest_sender.json"> <!-- 送信機専用のマニフェストを参照 -->
-    <title>KLAP_transmitter_ver3</title>
+    <title>klap-transmitter-ver3</title>
     <script src="https://cdn.tailwindcss.com"></script>
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js')
-      .then(registration => {
-        console.log('Service Worker registered! Scope:', registration.scope);
-      })
-      .catch(err => {
-        console.log('Service Worker registration failed:', err);
-      });
-  });
-}
-</script>
-
-
-    
     <style>
+        /* (CSS is not changed) */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f7f7f7;
@@ -50,7 +35,7 @@ if ('serviceWorker' in navigator) {
             border-radius: 8px;
             font-weight: bold;
             display: none;
-            word-break: break-word; /* メッセージが長すぎる場合の対策 */
+            word-break: break-word; 
         }
         .success {
             background-color: #d1fae5;
@@ -64,7 +49,6 @@ if ('serviceWorker' in navigator) {
             background-color: #dbeafe;
             color: #1e40af;
         }
-        /* PWAがstandaloneモードで起動したときにのみ適用されるスタイル */
         @media all and (display-mode: standalone) {
             body {
                 padding-top: max(1rem, env(safe-area-inset-top));
@@ -102,10 +86,9 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <script>
-    // ⭐ 【修正済み】ノードAがSoftAPとして起動するため、IPアドレスを192.168.4.1に固定します ⭐
+    // ノードAのSoftAP IPアドレス
     const NODE_A_IP = "192.168.4.1"; 
     const API_URL = `http://${NODE_A_IP}/send`; 
-    // ------------------------------------------------------------------
 
     const form = document.getElementById('send-form');
     const input = document.getElementById('message-input');
@@ -116,24 +99,21 @@ if ('serviceWorker' in navigator) {
 
     ipDisplay.textContent = NODE_A_IP;
 
-    // メッセージ表示関数
     function displayStatus(message, type) {
         statusDisplay.textContent = message;
         statusDisplay.className = `status-message ${type}`;
         statusDisplay.style.display = 'block';
         
-        // 5秒後にメッセージを非表示にする
+        // 8 seconds to hide the message
         setTimeout(() => {
             statusDisplay.style.display = 'none';
-        }, 5000);
+        }, 8000);
     }
 
-    // 文字数カウント
     input.addEventListener('input', () => {
         charCount.textContent = input.value.length;
     });
 
-    // フォーム送信処理
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const message = input.value;
@@ -144,8 +124,8 @@ if ('serviceWorker' in navigator) {
         }
 
         button.disabled = true;
-        button.innerHTML = '<svg class="w-5 h-5 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.057 4m2.583 0H4v5m14.59 2a8.001 8.001 0 01-13.391 6.36M18.582 6l-3.5 3.5"></path></svg>送信中...';
-        displayStatus('メッセージを送信しています...', 'info');
+        button.innerHTML = '<svg class="w-5 h-5 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.057 4m2.583 0H4v5m14.59 2a8.001 8.001 0 01-13.391 6.36M18.582 6l-3.5 3.5"></path></svg>配信結果待機中...';
+        displayStatus('メッセージの配信結果を待機しています...', 'info');
 
         try {
             const response = await fetch(API_URL, {
@@ -154,19 +134,28 @@ if ('serviceWorker' in navigator) {
                 body: message
             });
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ message: '不明なAPIエラー' }));
+            // IMPORTANT: Check HTTP status code, especially 503 (Service Unavailable)
+            if (!response.ok || response.status === 503) {
+                const errorData = await response.json().catch(() => ({ message: 'サーバー応答が不正です。' }));
+                
+                // If 503 error, the message failed to deliver via ESP-NOW
+                if (response.status === 503) {
+                     displayStatus(`❌ 配信失敗: ${errorData.message}`, 'error');
+                     return; 
+                }
+                
+                // Other HTTP errors
                 throw new Error(`HTTPエラー ${response.status}: ${errorData.message || 'サーバー応答が不正です。'}`);
             }
 
+            // 200 OK (Delivery success)
             const result = await response.json();
             
             if (result.status === 'ok') {
-                displayStatus('送信成功！サインボードで確認してください。', 'success');
-                // input.value = ''; // 送信後もメッセージを残す場合はコメントアウト
-                // charCount.textContent = input.value.length;
+                displayStatus('送信成功！メッセージはノードBに配信されました。', 'success');
             } else {
-                displayStatus(`送信失敗: ${result.message}`, 'error');
+                // In case of 200 OK but status is not 'ok' (unexpected)
+                displayStatus(`配信失敗: ${result.message}`, 'error');
             }
 
         } catch (error) {
@@ -174,7 +163,7 @@ if ('serviceWorker' in navigator) {
             let userMessage = error.message;
 
             if (error instanceof TypeError) {
-                 userMessage = `ネットワーク接続エラーです。デバイスがノードAのSoftAP (${ipDisplay.textContent}) に直接接続しているか確認してください。`;
+                 userMessage = `ネットワークエラーです。ノードAのSoftAP (${ipDisplay.textContent}) に接続しているか確認してください。`;
             } else if (error.message.includes('HTTPエラー')) {
                 userMessage = error.message;
             }
@@ -186,10 +175,9 @@ if ('serviceWorker' in navigator) {
         }
     });
 
-    // PWA: サービスワーカーの登録 (重要)
+    // PWA: Service Worker Registration (unchanged)
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        // service-worker-sender.js (他のファイルで提供済み) を登録
         navigator.serviceWorker.register('service-worker-sender.js') 
           .then(registration => {
             console.log('Service Worker registered with scope:', registration.scope);
@@ -201,12 +189,10 @@ if ('serviceWorker' in navigator) {
     }
 
 
-    // 起動時の初期メッセージ
     document.addEventListener('DOMContentLoaded', () => {
-        displayStatus(`ノードAのSoftAP (ESP32_Sender) に接続し、PWAを起動してください。IP: ${NODE_A_IP}`, 'info');
+        displayStatus(`デバイスをノードAのSoftAPに接続し、このPWAを起動してください。`, 'info');
     });
 </script>
 
 </body>
 </html>
-
