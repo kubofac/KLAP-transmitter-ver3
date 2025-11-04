@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="manifest_sender.json">
-    <title>ESP-NOW 送信機 PWA</title>
+    <title>KLAP-transmitter_ver3</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -76,12 +76,11 @@
     <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">ESP-NOW メッセージ送信機</h1>
     <p class="text-sm text-gray-500 mb-6 text-center">ノードB（サインボード）へメッセージを送信します。</p>
     
-    <!-- ⭐ プリセットボタンエリア - PIT IN と PIT IN & GAS に変更 ⭐ -->
+    <!-- ⭐ プリセットボタンエリア ⭐ -->
     <div id="preset-buttons" class="flex flex-wrap gap-3 mb-6">
         <button type="button" data-message="PIT IN" class="preset-btn flex-1 py-2 px-4 rounded-lg shadow-md text-base font-bold text-white bg-green-600 hover:bg-green-700 transition duration-150 ease-in-out">
             🚨 PIT IN
         </button>
-        <!-- ⭐ ここを PIT IN & GAS に変更しました ⭐ -->
         <button type="button" data-message="PIT IN & GAS" class="preset-btn flex-1 py-2 px-4 rounded-lg shadow-md text-base font-bold text-white bg-blue-600 hover:bg-blue-700 transition duration-150 ease-in-out">
             ⛽ PIT IN & GAS
         </button>
@@ -121,43 +120,44 @@
 
     const form = document.getElementById('send-form');
     const input = document.getElementById('message-input');
-    const sendButton = document.getElementById('send-button');
     const statusDisplay = document.getElementById('status-display');
     const charCount = document.getElementById('char-count');
     const ipDisplay = document.getElementById('ip-address');
-    const presetButtonsContainer = document.getElementById('preset-buttons'); // 新しい要素を取得
+    const presetButtonsContainer = document.getElementById('preset-buttons');
 
+    // DOM要素の取得は setup ボタン関数内で確実に行う
     let isSending = false;
     let stopSending = false;
     let retryTimer = null;
 
     ipDisplay.textContent = NODE_A_IP;
 
-    // UIの点滅処理を制御
+    // UIの点滅処理を制御 (ステータス表示のみ点滅させる)
     function startBlinking() {
         statusDisplay.classList.add('blinking');
-        // 送信中の点滅は送信ボタンまたはキャンセルボタンに適用
-        document.getElementById('send-button') ? sendButton.classList.add('blinking') : document.getElementById('cancel-button').classList.add('blinking');
     }
 
     function stopBlinking() {
         statusDisplay.classList.remove('blinking');
-        // 点滅クラスを解除
-        const currentButton = document.getElementById('send-button') || document.getElementById('cancel-button');
-        if(currentButton) currentButton.classList.remove('blinking');
     }
 
+    // ボタンの状態を「キャンセル」に切り替える
     function updateButtonToCancel() {
-        sendButton.id = 'cancel-button';
-        sendButton.type = 'button';
-        sendButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
-        sendButton.classList.add('bg-red-600', 'hover:bg-red-700', 'focus:ring-red-500');
-        sendButton.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>送信キャンセル';
-        sendButton.onclick = handleCancel;
+        let currentButton = document.getElementById('send-button');
+        if (!currentButton) currentButton = document.getElementById('cancel-button'); // 既にキャンセルボタンならそのまま使用
+
+        currentButton.id = 'cancel-button';
+        currentButton.type = 'button';
+        currentButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
+        currentButton.classList.add('bg-red-600', 'hover:bg-red-700', 'focus:ring-red-500');
+        currentButton.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>送信キャンセル';
+        
+        // ⭐ クリックイベントを直接設定し直す (修正箇所) ⭐
+        currentButton.onclick = handleCancel; 
     }
 
+    // ボタンの状態を「送信」に切り替える
     function updateButtonToSend() {
-        // ボタンがキャンセル状態の場合、送信状態に戻す
         const cancelButton = document.getElementById('cancel-button');
         if (cancelButton) {
             cancelButton.id = 'send-button';
@@ -176,11 +176,14 @@
     }
 
     function handleCancel() {
-        if (retryTimer) {
-            clearTimeout(retryTimer);
+        // ⭐ キャンセル処理が確実に停止するように修正 ⭐
+        if (isSending) {
+            if (retryTimer) {
+                clearTimeout(retryTimer);
+            }
+            stopSending = true; 
+            finalizeSending('❌ 送信をキャンセルしました。', 'error', false);
         }
-        stopSending = true; // メインループを停止させるフラグ
-        finalizeSending('❌ 送信をキャンセルしました。', 'error', false);
     }
 
     function finalizeSending(message, type, resetInput = true) {
@@ -191,11 +194,7 @@
         if (retryTimer) clearTimeout(retryTimer);
         
         displayStatus(message, type);
-        input.disabled = false; // 送信完了またはキャンセル後に入力可能に戻す
-
-        if (resetInput) {
-            // 入力クリアは行わない
-        }
+        input.disabled = false;
 
         // 8秒後にメッセージを非表示にする
         setTimeout(() => {
@@ -205,7 +204,7 @@
     
     // ⭐ メインの送信リトライロジック ⭐
     async function attemptSend(message, startTime) {
-        if (stopSending) return; // キャンセルされたら即停止
+        if (stopSending) return;
 
         const elapsedTime = millis() - startTime;
         if (elapsedTime >= MAX_RETRY_TIME_MS) {
@@ -228,28 +227,22 @@
             });
 
             if (response.status === 200) {
-                // 成功 (ノードAがESP-NOW配信成功を確認)
                 success = true;
             } else if (response.status === 503) {
-                // ESP-NOW配信失敗 (リトライ対象)
                 const errorData = await response.json().catch(() => ({ message: 'ノードBがオフラインです。' }));
                 errorMessage = errorData.message || '受信機から応答がありません。';
             } else {
-                // その他のHTTPエラー (リトライ対象)
                 errorMessage = `HTTPエラー ${response.status}が発生しました。`;
             }
 
         } catch (error) {
-            // ネットワークエラー (ノードAへの接続失敗)
             console.error('ネットワーク接続エラー:', error);
             errorMessage = `ノードAへの接続エラー。Wi-Fi接続を確認してください。`;
         }
 
         if (success) {
-            // 成功した場合、処理を終了
             finalizeSending('✅ 送信成功！メッセージはノードBに配信されました。', 'success');
         } else {
-            // 失敗またはタイムアウトの場合、リトライをスケジュール
             if (!stopSending) {
                 // UIエラーメッセージを一時的に更新 (点滅は継続)
                 statusDisplay.textContent = `📡 送信中... (残り ${timeRemaining}秒, リトライ: ${errorMessage})`;
@@ -264,20 +257,16 @@
     function handlePresetSend(message) {
         if (isSending) return;
 
-        // メッセージ入力欄をプリセットメッセージに設定
         input.value = message; 
         charCount.textContent = message.length;
         
-        // フォームのsubmit処理と同じロジックを開始
         isSending = true;
         stopSending = false;
 
-        // UIを「送信中」モードに切り替え
         input.disabled = true; 
         updateButtonToCancel();
         startBlinking();
 
-        // 送信処理開始
         const startTime = millis();
         attemptSend(message, startTime);
     }
@@ -297,12 +286,10 @@
         isSending = true;
         stopSending = false;
 
-        // UIを「送信中」モードに切り替え
-        input.disabled = true; // 送信中は入力を無効化
+        input.disabled = true; 
         updateButtonToCancel();
         startBlinking();
 
-        // 送信処理開始
         const startTime = millis();
         attemptSend(message, startTime);
     });
