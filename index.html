@@ -6,6 +6,22 @@
     <link rel="manifest" href="manifest_sender.json"> <!-- 送信機専用のマニフェストを参照 -->
     <title>KLAP_transmitter_ver3</title>
     <script src="https://cdn.tailwindcss.com"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(registration => {
+        console.log('Service Worker registered! Scope:', registration.scope);
+      })
+      .catch(err => {
+        console.log('Service Worker registration failed:', err);
+      });
+  });
+}
+</script>
+
+
+    
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -193,3 +209,4 @@
 
 </body>
 </html>
+
