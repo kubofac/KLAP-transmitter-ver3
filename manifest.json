@@ -1,5 +1,5 @@
 {
-  "name": "KLAP_trnsmitter_ver3",
+  "name": "KLAPｰtrnsmitter_ver3",
   "short_name": "KLAP_trnsmitter_ver3",
   "description": "BLEとGPSに対応した送信アプリです。",
   "start_url": "/index.html",
@@ -21,4 +21,5 @@
   ]
 
 }
+
 
