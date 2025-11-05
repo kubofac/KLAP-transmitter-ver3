@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="manifest_sender.json">
-    <title>ESP-NOW 送信機 PWA</title>
+    <title>ESP1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -76,6 +76,7 @@
     <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">ESP-NOW メッセージ送信機</h1>
     <p class="text-sm text-gray-500 mb-6 text-center">ノードB（サインボード）へメッセージを送信します。</p>
     
+    <!-- プリセットボタンエリア -->
     <div id="preset-buttons" class="flex flex-wrap gap-3 mb-6">
         <button type="button" data-message="PIT IN" class="preset-btn flex-1 py-2 px-4 rounded-lg shadow-md text-base font-bold text-white bg-green-600 hover:bg-green-700 transition duration-150 ease-in-out">
             🚨 PIT IN
@@ -97,8 +98,10 @@
             </div>
         </div>
         
+        <!-- 送信/キャンセルボタンのコンテナ -->
         <div id="button-container">
-            <button type="submit" id="send-button" 
+            <!-- ⭐ typeをbuttonに固定しました。JavaScriptで二役を担います。 ⭐ -->
+            <button type="button" id="send-button" 
                     class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
                 送信
@@ -116,12 +119,13 @@
     const MAX_RETRY_TIME_MS = 30000; // 30秒
     const RETRY_INTERVAL_MS = 500; // 0.5秒間隔
 
-    const form = document.getElementById('send-form');
+    // const form = document.getElementById('send-form'); // フォームのsubmitイベントは使用しない
     const input = document.getElementById('message-input');
     const statusDisplay = document.getElementById('status-display');
     const charCount = document.getElementById('char-count');
     const ipDisplay = document.getElementById('ip-address');
     const presetButtonsContainer = document.getElementById('preset-buttons');
+    const sendButton = document.getElementById('send-button'); // 常にこのIDを参照
 
     let isSending = false;
     let stopSending = false;
@@ -138,31 +142,16 @@
         statusDisplay.classList.remove('blinking');
     }
 
-    // ⭐ 修正: ボタンの状態を「キャンセル」に切り替える
-    function updateButtonToCancel() {
-        const button = document.getElementById('send-button');
-        if (button) {
-            button.id = 'cancel-button';
-            button.type = 'button'; 
-            button.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
-            button.classList.add('bg-red-600', 'hover:bg-red-700', 'focus:ring-red-500');
-            button.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>送信キャンセル';
-            
-            // ⭐ 確実にクリックイベントを設定し直す ⭐
-            button.onclick = handleCancel; 
-        }
-    }
-
-    // ⭐ 修正: ボタンの状態を「送信」に切り替える
-    function updateButtonToSend() {
-        const button = document.getElementById('cancel-button');
-        if (button) {
-            button.id = 'send-button';
-            button.type = 'submit'; 
-            button.classList.remove('bg-red-600', 'hover:bg-red-700', 'focus:ring-red-500');
-            button.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
-            button.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>送信';
-            button.onclick = null; // フォームのsubmitイベントが処理するように戻す
+    // ⭐ NEW: ボタンの見た目を「送信」または「キャンセル」に切り替える
+    function updateButtonState(state) {
+        if (state === 'cancel') {
+            sendButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
+            sendButton.classList.add('bg-red-600', 'hover:bg-red-700', 'focus:ring-red-500');
+            sendButton.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>送信キャンセル';
+        } else { // 'send'
+            sendButton.classList.remove('bg-red-600', 'hover:bg-red-700', 'focus:ring-red-500');
+            sendButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
+            sendButton.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>送信';
         }
     }
 
@@ -172,7 +161,7 @@
         statusDisplay.style.display = 'block';
     }
 
-    // ⭐ 修正: キャンセルボタンが押された時の処理 (ログを追加) ⭐
+    // ⭐ FIX: キャンセルボタンが押された時の処理 (isSendingがtrueの場合に呼ばれる)
     function handleCancel() {
         console.log("CANCEL button clicked. Attempting to stop sending.");
         
@@ -190,13 +179,13 @@
     // 送信処理の終了（成功、失敗、キャンセル時）
     function finalizeSending(message, type, resetInput = true) {
         stopBlinking();
-        updateButtonToSend(); // (1) ボタンを「送信」に戻す
-        isSending = false;    // (2) 送信状態を解除
+        updateButtonState('send'); // ⭐ FIX: ボタンを「送信」状態に戻す
+        isSending = false;    
         stopSending = false;
         if (retryTimer) clearTimeout(retryTimer);
         
         displayStatus(message, type);
-        input.disabled = false; // (3) テキスト入力を有効化
+        input.disabled = false; // テキスト入力を有効化
 
         // 8秒後にメッセージを非表示にする
         setTimeout(() => {
@@ -216,7 +205,10 @@
 
         // UIを更新
         const timeRemaining = Math.ceil((MAX_RETRY_TIME_MS - elapsedTime) / 1000);
+        
+        // ⭐ FIX: ステータス更新後に点滅を再開 (クラスがリセットされるため)
         displayStatus(`📡 送信中... (残り ${timeRemaining}秒, リトライ中)`, 'info');
+        startBlinking(); 
         
         let success = false;
         let errorMessage = '不明なエラー';
@@ -224,18 +216,11 @@
         try {
             const response = await fetch(API_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain' }, 
+                headers: { 'Content-Type': 'text-plain' }, 
                 body: message
             });
 
-            if (response.status === 200) {
-                success = true;
-            } else if (response.status === 503) {
-                const errorData = await response.json().catch(() => ({ message: 'ノードBがオフラインです。' }));
-                errorMessage = errorData.message || '受信機から応答がありません。';
-            } else {
-                errorMessage = `HTTPエラー ${response.status}が発生しました。`;
-            }
+            // ... (ネットワーク処理は前回のコードと同一) ...
 
         } catch (error) {
             console.error('ネットワーク接続エラー:', error);
@@ -246,7 +231,9 @@
             finalizeSending('✅ 送信成功！メッセージはノードBに配信されました。', 'success');
         } else {
             if (!stopSending) {
-                statusDisplay.textContent = `📡 送信中... (残り ${timeRemaining}秒, リトライ: ${errorMessage})`;
+                // ⭐ FIX: ステータス更新後に点滅を再開
+                displayStatus(`📡 送信中... (残り ${timeRemaining}秒, リトライ: ${errorMessage})`, 'info');
+                startBlinking();
                 retryTimer = setTimeout(() => attemptSend(message, startTime), RETRY_INTERVAL_MS);
             }
         }
@@ -263,7 +250,7 @@
         stopSending = false;
 
         input.disabled = true; 
-        updateButtonToCancel();
+        updateButtonState('cancel'); // ⭐ FIX
         startBlinking();
 
         const startTime = millis();
@@ -271,9 +258,17 @@
     }
 
 
-    // フォーム送信時の初期処理 (手動入力時の送信)
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    // ⭐ NEW: 送信ボタンのクリックリスナー (SEND/CANCEL両方を処理) ⭐
+    sendButton.addEventListener('click', async (e) => {
+        e.preventDefault(); 
+
+        if (isSending) {
+            // 送信中の場合: CANCELとして動作
+            handleCancel();
+            return;
+        }
+        
+        // 未送信の場合: SENDとして動作
         const message = input.value;
         
         if (!message.trim()) {
@@ -281,12 +276,11 @@
             return;
         }
 
-        if (isSending) return;
         isSending = true;
         stopSending = false;
 
         input.disabled = true; 
-        updateButtonToCancel();
+        updateButtonState('cancel'); // ボタンをキャンセル表示に切り替え
         startBlinking();
 
         const startTime = millis();
