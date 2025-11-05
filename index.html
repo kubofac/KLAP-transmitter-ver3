@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- PWA化は推奨しないため、manifestのリンクはコメントアウトします -->
-    <!-- <link rel="manifest" href="manifest.json"> -->
-    <title>KLAP-transmitter-ver3</title>
+    <link rel="manifest" href="manifest.json">
+    <title>KLAP-transmitter-ver5</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -36,7 +36,7 @@
             border-radius: 8px;
             font-weight: bold;
             word-break: break-word; 
-            text-align: center; /* テキストを中央揃え */
+            text-align: center; 
 
             /* opacityとvisibilityの変更にトランジションを設定 */
             transition: opacity 0.3s ease, box-shadow 0.3s ease, background-color 0.3s;
@@ -100,7 +100,7 @@
 <body>
 
 <div class="container">
-    <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">KLAP_transmitter</h1>
+    <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">KLAP-transmitter</h1>
     <p class="text-sm text-gray-500 mb-6 text-center">ノードB（サインボード）へメッセージを送信します。</p>
     
     <!-- プリセットボタンエリア -->
@@ -143,8 +143,9 @@
 <script>
     const NODE_A_IP = "192.168.4.1"; 
     const API_URL = `http://${NODE_A_IP}/send`; 
-    const MAX_RETRY_TIME_MS = 30000; // 30秒
-    const RETRY_INTERVAL_MS = 500; // 0.5秒間隔
+    const MAX_RETRY_TIME_MS = 30000; // 30秒 (全体リトライ時間制限)
+    const RETRY_INTERVAL_MS = 500; // 0.5秒間隔 (次のリトライまでの待機時間)
+    const FETCH_TIMEOUT_MS = 5000; // 5秒 (個々のfetchリクエストの強制タイムアウト)
 
     const input = document.getElementById('message-input');
     const statusDisplay = document.getElementById('status-display');
@@ -159,6 +160,33 @@
 
     ipDisplay.textContent = NODE_A_IP;
 
+    // ユーティリティ関数
+    function millis() {
+        return new Date().getTime();
+    }
+    
+    // === 修正点: fetchリクエストに強制タイムアウトを設定する関数 ===
+    async function fetchWithTimeout(resource, options = {}) {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+        try {
+            const response = await fetch(resource, {
+                ...options,
+                signal: controller.signal
+            });
+            clearTimeout(id);
+            return response;
+        } catch (error) {
+            clearTimeout(id);
+            if (error.name === 'AbortError') {
+                throw new Error('Timeout: fetchリクエストが5秒を超過しました。');
+            }
+            throw error;
+        }
+    }
+    // ==========================================================
+
     // UIの点滅処理を制御
     function startBlinking() {
         if (!statusDisplay.classList.contains('blinking')) {
@@ -170,18 +198,11 @@
         statusDisplay.classList.remove('blinking');
     }
 
-    // displayStatus関数: opacity/visibilityで表示を制御し、レイアウトシフトを防ぐ
+    // displayStatus関数
     function displayStatus(message, type) {
-        // メッセージとタイプを更新
         statusDisplay.textContent = message;
-
-        // 既存のタイプと成功シェイククラスを削除
         statusDisplay.classList.remove('success', 'error', 'info', 'shake-on-success');
-        
-        // 新しいタイプクラスを追加
         statusDisplay.classList.add(type);
-
-        // 要素を可視化（min-heightによりスペースは確保されている）
         statusDisplay.style.visibility = 'visible';
         statusDisplay.style.opacity = '1';
     }
@@ -202,43 +223,35 @@
 
     // キャンセルボタンが押された時の処理
     function handleCancel() {
-        console.log("CANCEL button clicked. Attempting to stop sending.");
-        
         if (isSending) { 
             if (retryTimer) {
                 clearTimeout(retryTimer);
             }
             stopSending = true; 
-            
-            // finalizeSendingを呼び出してUIをリセット
             finalizeSending('❌ 送信をキャンセルしました。', 'error', false);
         }
     }
 
     // 送信処理の終了（成功、失敗、キャンセル時）
     function finalizeSending(message, type, resetInput = true) {
-        stopBlinking(); // 点滅を停止
-        updateButtonState('send'); // ボタンを「送信」状態に戻す
+        stopBlinking(); 
+        updateButtonState('send'); 
         isSending = false;   
         stopSending = false;
         if (retryTimer) clearTimeout(retryTimer);
         
         displayStatus(message, type);
         
-        // 成功時のみシェイクアニメーションを追加
         if (type === 'success') {
             statusDisplay.classList.add('shake-on-success');
         } 
 
-        input.disabled = false; // テキスト入力を有効化
+        input.disabled = false; 
 
         // 8秒後にメッセージを非表示にする
         setTimeout(() => {
-            // 要素を非表示にするが、スペースは保持する
             statusDisplay.style.opacity = '0';
             statusDisplay.style.visibility = 'hidden';
-            
-            // シェイクアニメーションを停止する
             statusDisplay.classList.remove('shake-on-success'); 
         }, 8000);
     }
@@ -246,13 +259,12 @@
     // メインの送信リトライロジック
     async function attemptSend(message, startTime) {
         if (stopSending) {
-            console.log("Retry stopped by user cancel.");
-            return; // ユーザーによるキャンセル停止
+            return; 
         }
 
         const elapsedTime = millis() - startTime;
         if (elapsedTime >= MAX_RETRY_TIME_MS) {
-            // === 30秒超過による停止処理 ===
+            // 30秒超過による停止処理
             finalizeSending(`❌ 配信失敗: ${MAX_RETRY_TIME_MS / 1000}秒以内にノードBから応答がありませんでした。`, 'error', false);
             return; 
         }
@@ -260,7 +272,6 @@
         // UIを更新
         const timeRemaining = Math.ceil((MAX_RETRY_TIME_MS - elapsedTime) / 1000);
         
-        // 点滅開始を保証し、ステータスを更新 (初期はinfo)
         startBlinking(); 
         displayStatus(`📡 送信中... (残り ${timeRemaining}秒, リトライ中)`, 'info');
         
@@ -268,7 +279,8 @@
         let errorMessage = '不明なエラー';
 
         try {
-            const response = await fetch(API_URL, {
+            // === 修正点: fetchWithTimeoutを使用し、5秒で必ずタイムアウトさせる ===
+            const response = await fetchWithTimeout(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text-plain' }, 
                 body: message
@@ -277,7 +289,6 @@
             if (response.status === 200) {
                 success = true;
             } else if (response.status === 503) {
-                // HTTP 503 (ESP-NOW送信失敗) の場合
                 const errorData = await response.json().catch(() => ({ message: 'ノードBがオフラインです。' }));
                 errorMessage = errorData.message || '受信機から応答がありません。';
             } else {
@@ -285,9 +296,11 @@
             }
 
         } catch (error) {
-            // ネットワーク接続失敗時 (ノードA自体に接続できない場合)
-            console.error('ネットワーク接続エラー:', error);
-            errorMessage = `ノードAへの接続エラー。Wi-Fi接続を確認してください。`;
+            if (error.message.includes('Timeout')) {
+                errorMessage = 'ノードAへの接続が5秒でタイムアウトしました。Wi-Fi接続を確認してください。';
+            } else {
+                errorMessage = `ノードAへの接続エラー。Wi-Fi接続を確認してください。`;
+            }
             success = false;
         }
 
@@ -295,11 +308,11 @@
             finalizeSending('✅ 送信成功！メッセージはノードBに配信されました。', 'success');
         } else {
             if (!stopSending) {
-                // === 修正点: エラー発生時は「error」スタイルでリトライメッセージを表示し、問題を強調 ===
+                // エラー発生時は「error」スタイルでリトライメッセージを表示
                 displayStatus(`🚨 エラー発生: ${errorMessage} (残り ${timeRemaining}秒, リトライ中)`, 'error');
-                startBlinking(); // ステータス更新後も点滅を継続
+                startBlinking(); 
                 
-                // 固定間隔でリトライをスケジュール
+                // 次のリトライをスケジュール
                 retryTimer = setTimeout(() => attemptSend(message, startTime), RETRY_INTERVAL_MS);
             }
         }
@@ -357,10 +370,6 @@
         charCount.textContent = input.value.length;
     });
 
-    // ユーティリティ関数
-    function millis() {
-        return new Date().getTime();
-    }
 
     document.addEventListener('DOMContentLoaded', () => {
         charCount.textContent = input.value.length; 
