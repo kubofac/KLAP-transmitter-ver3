@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="manifest" href="manifest_sender.json">
-    <title>ESP-NOW</title>
+    <link rel="manifest" href="manifest.json">
+    <title>KLAP-transmitter-ver3</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -29,16 +29,23 @@
             transition: all 0.3s ease;
         }
         .status-message {
-            padding: 10px;
+            padding: 15px;
             margin-top: 15px;
+            margin-bottom: 20px;
             border-radius: 8px;
             font-weight: bold;
             display: none;
             word-break: break-word; 
+            transition: box-shadow 0.3s ease;
+            
+            /* === 修正点: 最小高さを設定して下の要素が揺れないようにする === */
+            min-height: 80px; /* 最も長いリトライメッセージ（約2行分）を収容できる高さに固定 */
+            /* ================================================== */
         }
         .success {
             background-color: #d1fae5;
             color: #065f46;
+            box-shadow: 0 0 15px rgba(6, 95, 70, 0.3);
         }
         .error {
             background-color: #fee2e2;
@@ -49,13 +56,23 @@
             color: #1e40af;
         }
 
-        /* 点滅アニメーションの定義 (ステータス表示用) */
+        /* 送信中の点滅アニメーション */
         @keyframes blink {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.3; }
         }
         .blinking {
             animation: blink 1s step-start 0s infinite;
+        }
+        
+        /* 成功時の縦揺れアニメーション (前回追加分) */
+        @keyframes shake-vertical {
+            0%, 100% { transform: translateY(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateY(-3px); }
+            20%, 40%, 60%, 80% { transform: translateY(3px); }
+        }
+        .shake-on-success {
+            animation: shake-vertical 1s ease-in-out infinite;
         }
 
         /* プリセットボタンのスタイル */
@@ -86,6 +103,7 @@
         </button>
     </div>
     
+    <!-- ステータス表示エリア (min-heightで高さ固定) -->
     <div id="status-display" class="status-message info">接続情報: ロード中...</div>
 
     <form id="send-form" class="space-y-4">
@@ -100,7 +118,6 @@
         
         <!-- 送信/キャンセルボタンのコンテナ -->
         <div id="button-container">
-            <!-- typeをbuttonに固定。JavaScriptで二役を担います。 -->
             <button type="button" id="send-button" 
                     class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
@@ -132,7 +149,7 @@
 
     ipDisplay.textContent = NODE_A_IP;
 
-    // UIの点滅処理を制御 (blinkingクラスの追加/削除のみ行う)
+    // UIの点滅処理を制御
     function startBlinking() {
         if (!statusDisplay.classList.contains('blinking')) {
             statusDisplay.classList.add('blinking');
@@ -154,6 +171,9 @@
         // status-messageとtypeClassを基本とし、必要であればblinkingを追加
         statusDisplay.className = `status-message ${typeClass} ${isBlinking ? 'blinking' : ''}`;
         statusDisplay.style.display = 'block';
+        
+        // 常に成功シェイククラスを削除しておく (finalizeSendingで再設定される)
+        statusDisplay.classList.remove('shake-on-success');
     }
 
 
@@ -194,11 +214,19 @@
         if (retryTimer) clearTimeout(retryTimer);
         
         displayStatus(message, type);
+        
+        // 成功時のみシェイクアニメーションを追加
+        if (type === 'success') {
+            statusDisplay.classList.add('shake-on-success');
+        } 
+
         input.disabled = false; // テキスト入力を有効化
 
         // 8秒後にメッセージを非表示にする
         setTimeout(() => {
             statusDisplay.style.display = 'none';
+            // シェイクアニメーションを停止する
+            statusDisplay.classList.remove('shake-on-success'); 
         }, 8000);
     }
     
