@@ -41,7 +41,7 @@
             /* opacityとvisibilityの変更にトランジションを設定 */
             transition: opacity 0.3s ease, box-shadow 0.3s ease, background-color 0.3s;
             
-            /* === レイアウトシフト防止の修正: 高さを固定し、Flexboxでメッセージを中央に配置 === */
+            /* レイアウトシフト防止の修正: 高さを固定し、Flexboxでメッセージを中央に配置 */
             height: 100px; /* 高さを固定 */
             display: flex;
             align-items: center; /* 垂直方向の中央揃え */
@@ -49,7 +49,6 @@
             
             opacity: 0; /* 初期状態で透明 */
             visibility: hidden; /* 初期状態で非表示だがスペースは確保 */
-            /* ========================================================================= */
         }
         .success {
             background-color: #d1fae5;
@@ -57,7 +56,8 @@
             box-shadow: 0 0 15px rgba(6, 95, 70, 0.3);
         }
         .error {
-            background-color: #fee2e2;
+            /* リトライ中のエラーも目立つように赤系を使用 */
+            background-color: #fee2e2; 
             color: #991b1b;
         }
         .info {
@@ -100,7 +100,7 @@
 <body>
 
 <div class="container">
-    <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">KLAP　transmitter</h1>
+    <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">KLAP_transmitter</h1>
     <p class="text-sm text-gray-500 mb-6 text-center">ノードB（サインボード）へメッセージを送信します。</p>
     
     <!-- プリセットボタンエリア -->
@@ -247,19 +247,20 @@
     async function attemptSend(message, startTime) {
         if (stopSending) {
             console.log("Retry stopped by user cancel.");
-            return; // キャンセルされたら即停止
+            return; // ユーザーによるキャンセル停止
         }
 
         const elapsedTime = millis() - startTime;
         if (elapsedTime >= MAX_RETRY_TIME_MS) {
+            // === 30秒超過による停止処理 ===
             finalizeSending(`❌ 配信失敗: ${MAX_RETRY_TIME_MS / 1000}秒以内にノードBから応答がありませんでした。`, 'error', false);
-            return;
+            return; 
         }
 
         // UIを更新
         const timeRemaining = Math.ceil((MAX_RETRY_TIME_MS - elapsedTime) / 1000);
         
-        // 点滅開始を保証し、ステータスを更新
+        // 点滅開始を保証し、ステータスを更新 (初期はinfo)
         startBlinking(); 
         displayStatus(`📡 送信中... (残り ${timeRemaining}秒, リトライ中)`, 'info');
         
@@ -294,11 +295,11 @@
             finalizeSending('✅ 送信成功！メッセージはノードBに配信されました。', 'success');
         } else {
             if (!stopSending) {
-                // ステータスを更新し、リトライをスケジュール
-                displayStatus(`📡 送信中... (残り ${timeRemaining}秒, リトライ: ${errorMessage})`, 'info');
+                // === 修正点: エラー発生時は「error」スタイルでリトライメッセージを表示し、問題を強調 ===
+                displayStatus(`🚨 エラー発生: ${errorMessage} (残り ${timeRemaining}秒, リトライ中)`, 'error');
                 startBlinking(); // ステータス更新後も点滅を継続
                 
-                // 指数バックオフの代わりに固定間隔でリトライ (RETRY_INTERVAL_MS)
+                // 固定間隔でリトライをスケジュール
                 retryTimer = setTimeout(() => attemptSend(message, startTime), RETRY_INTERVAL_MS);
             }
         }
