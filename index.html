@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <link rel="manifest" href="manifest.json">
+    <!-- PWA化は推奨しないため、manifestのリンクはコメントアウトします -->
+    <!-- <link rel="manifest" href="manifest.json"> -->
     <title>KLAP-transmitter-ver3</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -35,14 +36,20 @@
             border-radius: 8px;
             font-weight: bold;
             word-break: break-word; 
+            text-align: center; /* テキストを中央揃え */
+
             /* opacityとvisibilityの変更にトランジションを設定 */
             transition: opacity 0.3s ease, box-shadow 0.3s ease, background-color 0.3s;
             
-            /* === 修正点: 高さ固定と非表示方法の変更 === */
-            min-height: 80px; /* メッセージの最大の高さを確保 */
+            /* === レイアウトシフト防止の修正: 高さを固定し、Flexboxでメッセージを中央に配置 === */
+            height: 100px; /* 高さを固定 */
+            display: flex;
+            align-items: center; /* 垂直方向の中央揃え */
+            justify-content: center; /* 水平方向の中央揃え */
+            
             opacity: 0; /* 初期状態で透明 */
             visibility: hidden; /* 初期状態で非表示だがスペースは確保 */
-            /* ==================================== */
+            /* ========================================================================= */
         }
         .success {
             background-color: #d1fae5;
@@ -93,9 +100,10 @@
 <body>
 
 <div class="container">
-    <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">KLAP transmitter</h1>
+    <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">KLAP　transmitter</h1>
     <p class="text-sm text-gray-500 mb-6 text-center">ノードB（サインボード）へメッセージを送信します。</p>
     
+    <!-- プリセットボタンエリア -->
     <div id="preset-buttons" class="flex flex-wrap gap-3 mb-6">
         <button type="button" data-message="PIT IN" class="preset-btn flex-1 py-2 px-4 rounded-lg shadow-md text-base font-bold text-white bg-green-600 hover:bg-green-700 transition duration-150 ease-in-out">
             🚨 PIT IN
@@ -105,6 +113,7 @@
         </button>
     </div>
     
+    <!-- ステータス表示エリア: heightで高さ固定 -->
     <div id="status-display" class="status-message info">接続情報: ロード中...</div>
 
     <form id="send-form" class="space-y-4">
@@ -117,6 +126,7 @@
             </div>
         </div>
         
+        <!-- 送信/キャンセルボタンのコンテナ -->
         <div id="button-container">
             <button type="button" id="send-button" 
                     class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
@@ -370,5 +380,3 @@
 
 </body>
 </html>
-
-
