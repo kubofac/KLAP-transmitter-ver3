@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="manifest" href="manifest.json">
+      <link rel="manifest" href="manifest.json">
     <title>KLAP-transmitter-ver3</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -34,13 +34,15 @@
             margin-bottom: 20px;
             border-radius: 8px;
             font-weight: bold;
-            display: none;
             word-break: break-word; 
-            transition: box-shadow 0.3s ease;
+            /* opacityとvisibilityの変更にトランジションを設定 */
+            transition: opacity 0.3s ease, box-shadow 0.3s ease, background-color 0.3s;
             
-            /* === 修正点: 最小高さを設定して下の要素が揺れないようにする === */
-            min-height: 80px; /* 最も長いリトライメッセージ（約2行分）を収容できる高さに固定 */
-            /* ================================================== */
+            /* === 修正点: 高さ固定と非表示方法の変更 === */
+            min-height: 80px; /* メッセージの最大の高さを確保 */
+            opacity: 0; /* 初期状態で透明 */
+            visibility: hidden; /* 初期状態で非表示だがスペースは確保 */
+            /* ==================================== */
         }
         .success {
             background-color: #d1fae5;
@@ -62,10 +64,11 @@
             50% { opacity: 0.3; }
         }
         .blinking {
+            /* opacityはアニメーションで制御 */
             animation: blink 1s step-start 0s infinite;
         }
         
-        /* 成功時の縦揺れアニメーション (前回追加分) */
+        /* 成功時の縦揺れアニメーション */
         @keyframes shake-vertical {
             0%, 100% { transform: translateY(0); }
             10%, 30%, 50%, 70%, 90% { transform: translateY(-3px); }
@@ -90,10 +93,9 @@
 <body>
 
 <div class="container">
-    <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">KLAP　transmitter</h1>
+    <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">KLAP transmitter</h1>
     <p class="text-sm text-gray-500 mb-6 text-center">ノードB（サインボード）へメッセージを送信します。</p>
     
-    <!-- プリセットボタンエリア -->
     <div id="preset-buttons" class="flex flex-wrap gap-3 mb-6">
         <button type="button" data-message="PIT IN" class="preset-btn flex-1 py-2 px-4 rounded-lg shadow-md text-base font-bold text-white bg-green-600 hover:bg-green-700 transition duration-150 ease-in-out">
             🚨 PIT IN
@@ -103,7 +105,6 @@
         </button>
     </div>
     
-    <!-- ステータス表示エリア (min-heightで高さ固定) -->
     <div id="status-display" class="status-message info">接続情報: ロード中...</div>
 
     <form id="send-form" class="space-y-4">
@@ -116,7 +117,6 @@
             </div>
         </div>
         
-        <!-- 送信/キャンセルボタンのコンテナ -->
         <div id="button-container">
             <button type="button" id="send-button" 
                     class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
@@ -160,20 +160,20 @@
         statusDisplay.classList.remove('blinking');
     }
 
-    // displayStatus関数はblinkingクラスを削除しないように修正
+    // displayStatus関数: opacity/visibilityで表示を制御し、レイアウトシフトを防ぐ
     function displayStatus(message, type) {
-        const typeClass = type;
-        
-        // blinkingクラスが既に設定されているか確認し、設定されていれば保持する
-        const isBlinking = statusDisplay.classList.contains('blinking');
-
+        // メッセージとタイプを更新
         statusDisplay.textContent = message;
-        // status-messageとtypeClassを基本とし、必要であればblinkingを追加
-        statusDisplay.className = `status-message ${typeClass} ${isBlinking ? 'blinking' : ''}`;
-        statusDisplay.style.display = 'block';
+
+        // 既存のタイプと成功シェイククラスを削除
+        statusDisplay.classList.remove('success', 'error', 'info', 'shake-on-success');
         
-        // 常に成功シェイククラスを削除しておく (finalizeSendingで再設定される)
-        statusDisplay.classList.remove('shake-on-success');
+        // 新しいタイプクラスを追加
+        statusDisplay.classList.add(type);
+
+        // 要素を可視化（min-heightによりスペースは確保されている）
+        statusDisplay.style.visibility = 'visible';
+        statusDisplay.style.opacity = '1';
     }
 
 
@@ -209,7 +209,7 @@
     function finalizeSending(message, type, resetInput = true) {
         stopBlinking(); // 点滅を停止
         updateButtonState('send'); // ボタンを「送信」状態に戻す
-        isSending = false;    
+        isSending = false;   
         stopSending = false;
         if (retryTimer) clearTimeout(retryTimer);
         
@@ -224,7 +224,10 @@
 
         // 8秒後にメッセージを非表示にする
         setTimeout(() => {
-            statusDisplay.style.display = 'none';
+            // 要素を非表示にするが、スペースは保持する
+            statusDisplay.style.opacity = '0';
+            statusDisplay.style.visibility = 'hidden';
+            
             // シェイクアニメーションを停止する
             statusDisplay.classList.remove('shake-on-success'); 
         }, 8000);
@@ -348,24 +351,13 @@
         return new Date().getTime();
     }
 
-    // PWA: サービスワーカーの登録 (変更なし)
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker-sender.js') 
-          .then(registration => {
-            console.log('Service Worker registered with scope:', registration.scope);
-          })
-          .catch(error => {
-            console.error('Service Worker registration failed:', error);
-          });
-      });
-    }
-
-
     document.addEventListener('DOMContentLoaded', () => {
         charCount.textContent = input.value.length; 
         
-        displayStatus(`デバイスをノードAのSoftAPに接続し、このPWAを起動してください。`, 'info');
+        // 初回表示メッセージの表示をopacity: 1にして可視化
+        statusDisplay.style.opacity = '1';
+        statusDisplay.style.visibility = 'visible';
+        displayStatus(`デバイスをノードAのSoftAPに接続し、このページを開いてください。`, 'info');
         
         presetButtonsContainer.querySelectorAll('.preset-btn').forEach(button => {
             button.addEventListener('click', (e) => {
@@ -378,4 +370,5 @@
 
 </body>
 </html>
+
 
