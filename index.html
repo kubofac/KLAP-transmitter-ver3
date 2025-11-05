@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="manifest_sender.json">
-    <title>ESP1</title>
+    <title>ESP-NOW</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -100,7 +100,7 @@
         
         <!-- 送信/キャンセルボタンのコンテナ -->
         <div id="button-container">
-            <!-- ⭐ typeをbuttonに固定しました。JavaScriptで二役を担います。 ⭐ -->
+            <!-- typeをbuttonに固定。JavaScriptで二役を担います。 -->
             <button type="button" id="send-button" 
                     class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
@@ -119,13 +119,12 @@
     const MAX_RETRY_TIME_MS = 30000; // 30秒
     const RETRY_INTERVAL_MS = 500; // 0.5秒間隔
 
-    // const form = document.getElementById('send-form'); // フォームのsubmitイベントは使用しない
     const input = document.getElementById('message-input');
     const statusDisplay = document.getElementById('status-display');
     const charCount = document.getElementById('char-count');
     const ipDisplay = document.getElementById('ip-address');
     const presetButtonsContainer = document.getElementById('preset-buttons');
-    const sendButton = document.getElementById('send-button'); // 常にこのIDを参照
+    const sendButton = document.getElementById('send-button');
 
     let isSending = false;
     let stopSending = false;
@@ -133,16 +132,32 @@
 
     ipDisplay.textContent = NODE_A_IP;
 
-    // UIの点滅処理を制御 (ステータス表示のみ点滅させる)
+    // UIの点滅処理を制御 (blinkingクラスの追加/削除のみ行う)
     function startBlinking() {
-        statusDisplay.classList.add('blinking');
+        if (!statusDisplay.classList.contains('blinking')) {
+            statusDisplay.classList.add('blinking');
+        }
     }
 
     function stopBlinking() {
         statusDisplay.classList.remove('blinking');
     }
 
-    // ⭐ NEW: ボタンの見た目を「送信」または「キャンセル」に切り替える
+    // displayStatus関数はblinkingクラスを削除しないように修正
+    function displayStatus(message, type) {
+        const typeClass = type;
+        
+        // blinkingクラスが既に設定されているか確認し、設定されていれば保持する
+        const isBlinking = statusDisplay.classList.contains('blinking');
+
+        statusDisplay.textContent = message;
+        // status-messageとtypeClassを基本とし、必要であればblinkingを追加
+        statusDisplay.className = `status-message ${typeClass} ${isBlinking ? 'blinking' : ''}`;
+        statusDisplay.style.display = 'block';
+    }
+
+
+    // ボタンの見た目を「送信」または「キャンセル」に切り替える
     function updateButtonState(state) {
         if (state === 'cancel') {
             sendButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
@@ -155,13 +170,7 @@
         }
     }
 
-    function displayStatus(message, type) {
-        statusDisplay.textContent = message;
-        statusDisplay.className = `status-message ${type}`;
-        statusDisplay.style.display = 'block';
-    }
-
-    // ⭐ FIX: キャンセルボタンが押された時の処理 (isSendingがtrueの場合に呼ばれる)
+    // キャンセルボタンが押された時の処理
     function handleCancel() {
         console.log("CANCEL button clicked. Attempting to stop sending.");
         
@@ -178,8 +187,8 @@
 
     // 送信処理の終了（成功、失敗、キャンセル時）
     function finalizeSending(message, type, resetInput = true) {
-        stopBlinking();
-        updateButtonState('send'); // ⭐ FIX: ボタンを「送信」状態に戻す
+        stopBlinking(); // 点滅を停止
+        updateButtonState('send'); // ボタンを「送信」状態に戻す
         isSending = false;    
         stopSending = false;
         if (retryTimer) clearTimeout(retryTimer);
@@ -195,20 +204,23 @@
     
     // メインの送信リトライロジック
     async function attemptSend(message, startTime) {
-        if (stopSending) return; // キャンセルされたら即停止
+        if (stopSending) {
+            console.log("Retry stopped by user cancel.");
+            return; // キャンセルされたら即停止
+        }
 
         const elapsedTime = millis() - startTime;
         if (elapsedTime >= MAX_RETRY_TIME_MS) {
-            finalizeSending(`❌ 配信失敗: 30秒以内にノードBから応答がありませんでした。`, 'error', false);
+            finalizeSending(`❌ 配信失敗: ${MAX_RETRY_TIME_MS / 1000}秒以内にノードBから応答がありませんでした。`, 'error', false);
             return;
         }
 
         // UIを更新
         const timeRemaining = Math.ceil((MAX_RETRY_TIME_MS - elapsedTime) / 1000);
         
-        // ⭐ FIX: ステータス更新後に点滅を再開 (クラスがリセットされるため)
-        displayStatus(`📡 送信中... (残り ${timeRemaining}秒, リトライ中)`, 'info');
+        // 点滅開始を保証し、ステータスを更新
         startBlinking(); 
+        displayStatus(`📡 送信中... (残り ${timeRemaining}秒, リトライ中)`, 'info');
         
         let success = false;
         let errorMessage = '不明なエラー';
@@ -220,20 +232,32 @@
                 body: message
             });
 
-            // ... (ネットワーク処理は前回のコードと同一) ...
+            if (response.status === 200) {
+                success = true;
+            } else if (response.status === 503) {
+                // HTTP 503 (ESP-NOW送信失敗) の場合
+                const errorData = await response.json().catch(() => ({ message: 'ノードBがオフラインです。' }));
+                errorMessage = errorData.message || '受信機から応答がありません。';
+            } else {
+                errorMessage = `HTTPエラー ${response.status}が発生しました。`;
+            }
 
         } catch (error) {
+            // ネットワーク接続失敗時 (ノードA自体に接続できない場合)
             console.error('ネットワーク接続エラー:', error);
             errorMessage = `ノードAへの接続エラー。Wi-Fi接続を確認してください。`;
+            success = false;
         }
 
         if (success) {
             finalizeSending('✅ 送信成功！メッセージはノードBに配信されました。', 'success');
         } else {
             if (!stopSending) {
-                // ⭐ FIX: ステータス更新後に点滅を再開
+                // ステータスを更新し、リトライをスケジュール
                 displayStatus(`📡 送信中... (残り ${timeRemaining}秒, リトライ: ${errorMessage})`, 'info');
-                startBlinking();
+                startBlinking(); // ステータス更新後も点滅を継続
+                
+                // 指数バックオフの代わりに固定間隔でリトライ (RETRY_INTERVAL_MS)
                 retryTimer = setTimeout(() => attemptSend(message, startTime), RETRY_INTERVAL_MS);
             }
         }
@@ -250,7 +274,7 @@
         stopSending = false;
 
         input.disabled = true; 
-        updateButtonState('cancel'); // ⭐ FIX
+        updateButtonState('cancel');
         startBlinking();
 
         const startTime = millis();
@@ -258,7 +282,7 @@
     }
 
 
-    // ⭐ NEW: 送信ボタンのクリックリスナー (SEND/CANCEL両方を処理) ⭐
+    // 送信ボタンのクリックリスナー (SEND/CANCEL両方を処理)
     sendButton.addEventListener('click', async (e) => {
         e.preventDefault(); 
 
