@@ -49,7 +49,7 @@
             color: #1e40af;
         }
 
-        /* ⭐ 点滅アニメーションの定義 ⭐ */
+        /* 点滅アニメーションの定義 */
         @keyframes blink {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.3; }
@@ -76,7 +76,7 @@
     <h1 class="text-3xl font-extrabold mb-4 text-gray-800 text-center">ESP-NOW メッセージ送信機</h1>
     <p class="text-sm text-gray-500 mb-6 text-center">ノードB（サインボード）へメッセージを送信します。</p>
     
-    <!-- ⭐ プリセットボタンエリア ⭐ -->
+    <!-- プリセットボタンエリア -->
     <div id="preset-buttons" class="flex flex-wrap gap-3 mb-6">
         <button type="button" data-message="PIT IN" class="preset-btn flex-1 py-2 px-4 rounded-lg shadow-md text-base font-bold text-white bg-green-600 hover:bg-green-700 transition duration-150 ease-in-out">
             🚨 PIT IN
@@ -125,7 +125,6 @@
     const ipDisplay = document.getElementById('ip-address');
     const presetButtonsContainer = document.getElementById('preset-buttons');
 
-    // DOM要素の取得は setup ボタン関数内で確実に行う
     let isSending = false;
     let stopSending = false;
     let retryTimer = null;
@@ -144,15 +143,15 @@
     // ボタンの状態を「キャンセル」に切り替える
     function updateButtonToCancel() {
         let currentButton = document.getElementById('send-button');
-        if (!currentButton) currentButton = document.getElementById('cancel-button'); // 既にキャンセルボタンならそのまま使用
+        if (!currentButton) currentButton = document.getElementById('cancel-button');
 
         currentButton.id = 'cancel-button';
-        currentButton.type = 'button';
+        currentButton.type = 'button'; // typeを'button'に変更
         currentButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
         currentButton.classList.add('bg-red-600', 'hover:bg-red-700', 'focus:ring-red-500');
         currentButton.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>送信キャンセル';
         
-        // ⭐ クリックイベントを直接設定し直す (修正箇所) ⭐
+        // クリックイベントを直接設定し直す
         currentButton.onclick = handleCancel; 
     }
 
@@ -161,11 +160,11 @@
         const cancelButton = document.getElementById('cancel-button');
         if (cancelButton) {
             cancelButton.id = 'send-button';
-            cancelButton.type = 'submit';
+            cancelButton.type = 'submit'; // typeを'submit'に戻す
             cancelButton.classList.remove('bg-red-600', 'hover:bg-red-700', 'focus:ring-red-500');
             cancelButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'focus:ring-indigo-500');
             cancelButton.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>送信';
-            cancelButton.onclick = null; // フォームのsubmitイベントに戻す
+            cancelButton.onclick = null; // フォームのsubmitイベントが処理するように戻す
         }
     }
 
@@ -175,26 +174,29 @@
         statusDisplay.style.display = 'block';
     }
 
+    // キャンセルボタンが押された時の処理
     function handleCancel() {
-        // ⭐ キャンセル処理が確実に停止するように修正 ⭐
-        if (isSending) {
+        if (isSending) { 
             if (retryTimer) {
                 clearTimeout(retryTimer);
             }
             stopSending = true; 
+            
+            // finalizeSendingを呼び出してUIをリセット
             finalizeSending('❌ 送信をキャンセルしました。', 'error', false);
         }
     }
 
+    // 送信処理の終了（成功、失敗、キャンセル時）
     function finalizeSending(message, type, resetInput = true) {
         stopBlinking();
-        updateButtonToSend();
-        isSending = false;
+        updateButtonToSend(); // (1) ボタンを「送信」に戻す
+        isSending = false;    // (2) 送信状態を解除
         stopSending = false;
         if (retryTimer) clearTimeout(retryTimer);
         
         displayStatus(message, type);
-        input.disabled = false;
+        input.disabled = false; // (3) テキスト入力を有効化
 
         // 8秒後にメッセージを非表示にする
         setTimeout(() => {
@@ -202,9 +204,9 @@
         }, 8000);
     }
     
-    // ⭐ メインの送信リトライロジック ⭐
+    // メインの送信リトライロジック
     async function attemptSend(message, startTime) {
-        if (stopSending) return;
+        if (stopSending) return; // キャンセルされたら即停止
 
         const elapsedTime = millis() - startTime;
         if (elapsedTime >= MAX_RETRY_TIME_MS) {
@@ -244,16 +246,13 @@
             finalizeSending('✅ 送信成功！メッセージはノードBに配信されました。', 'success');
         } else {
             if (!stopSending) {
-                // UIエラーメッセージを一時的に更新 (点滅は継続)
                 statusDisplay.textContent = `📡 送信中... (残り ${timeRemaining}秒, リトライ: ${errorMessage})`;
-
-                // 次の送信をスケジュール
                 retryTimer = setTimeout(() => attemptSend(message, startTime), RETRY_INTERVAL_MS);
             }
         }
     }
 
-    // ⭐ プリセットボタンの送信ハンドラ ⭐
+    // プリセットボタンの送信ハンドラ
     function handlePresetSend(message) {
         if (isSending) return;
 
@@ -318,12 +317,10 @@
 
 
     document.addEventListener('DOMContentLoaded', () => {
-        // ⭐ 初期値の文字数を設定 ⭐
         charCount.textContent = input.value.length; 
         
         displayStatus(`デバイスをノードAのSoftAPに接続し、このPWAを起動してください。`, 'info');
         
-        // ⭐ プリセットボタンのリスナー設定 ⭐
         presetButtonsContainer.querySelectorAll('.preset-btn').forEach(button => {
             button.addEventListener('click', (e) => {
                 const message = e.currentTarget.getAttribute('data-message');
